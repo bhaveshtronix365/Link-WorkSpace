@@ -68,6 +68,9 @@ export const useNotifications = ({ autoConnect = true, inboxOnly = false } = {})
           }
           setNotifications((prev) => [data.notification, ...prev]);
           setUnreadCount((prev) => prev + 1);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('notifications-updated'));
+          }
         }
         break;
       case 'notification_read':
@@ -76,10 +79,21 @@ export const useNotifications = ({ autoConnect = true, inboxOnly = false } = {})
             n.id === data.notification_id ? { ...n, is_read: true } : n
           )
         );
+        if (typeof data.unread_count === 'number') {
+          setUnreadCount(data.unread_count);
+        } else {
+          setUnreadCount((prev) => Math.max(0, prev - 1));
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('notifications-updated'));
+        }
         break;
       case 'all_notifications_read':
         setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
         setUnreadCount(0);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('notifications-updated'));
+        }
         break;
       default:
         break;

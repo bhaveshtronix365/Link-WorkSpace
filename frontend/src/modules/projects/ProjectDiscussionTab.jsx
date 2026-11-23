@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useOutletContext } from 'react-router-dom';
 import projectsService from '../../services/projectsService';
 import Avatar from '../../components/common/Avatar';
+import DiscussionAttachmentPicker from '../discussions/components/DiscussionAttachmentPicker';
+import DiscussionAttachmentList from '../discussions/components/DiscussionAttachmentList';
 
 /**
  * Screen 43: Project Discussion Tab
@@ -24,6 +26,9 @@ export const ProjectDiscussionTab = () => {
   const [newContent, setNewContent] = useState('');
   const [newCategory, setNewCategory] = useState('general');
   const [isPinned, setIsPinned] = useState(false);
+  const [modalAttachmentIds, setModalAttachmentIds] = useState([]);
+  const [isUploadingModalAttachments, setIsUploadingModalAttachments] = useState(false);
+  const [modalPickerKey, setModalPickerKey] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState(null);
 
@@ -89,6 +94,7 @@ export const ProjectDiscussionTab = () => {
         content: newContent.trim(),
         category: newCategory,
         is_pinned: isPinned,
+        attachment_ids: modalAttachmentIds.length > 0 ? modalAttachmentIds : undefined,
       });
       setDiscussions((prev) => [created, ...prev]);
       // Reset form (Rule 2)
@@ -96,10 +102,12 @@ export const ProjectDiscussionTab = () => {
       setNewContent('');
       setNewCategory('general');
       setIsPinned(false);
+      setModalAttachmentIds([]);
+      setModalPickerKey((k) => k + 1);
       setShowCreateModal(false);
     } catch (err) {
       console.error('Failed to create discussion:', err);
-      setCreateError(err?.response?.data?.detail || 'Failed to post discussion');
+      setCreateError(err?.response?.data?.detail?.message || err?.response?.data?.detail || 'Failed to post discussion');
     } finally {
       setSubmitting(false);
     }
@@ -246,6 +254,12 @@ export const ProjectDiscussionTab = () => {
                     <p className="font-body-md text-body-md text-text-secondary leading-relaxed mt-2 whitespace-pre-line">
                       {d.content}
                     </p>
+                    {d.attachments && d.attachments.length > 0 && (
+                      <DiscussionAttachmentList
+                        attachments={d.attachments}
+                        discussionId={d.id}
+                      />
+                    )}
                   </div>
 
                   {/* Reaction Badges & Counts */}
@@ -280,6 +294,12 @@ export const ProjectDiscussionTab = () => {
                             <span className="font-body-sm text-[10px] text-text-muted">Reply</span>
                           </div>
                           <p className="font-body-sm text-body-sm text-text-secondary">{c.content}</p>
+                          {c.attachments && c.attachments.length > 0 && (
+                            <DiscussionAttachmentList
+                              attachments={c.attachments}
+                              discussionId={d.id}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -420,6 +440,20 @@ export const ProjectDiscussionTab = () => {
                 </div>
               </div>
 
+              {/* Attachments Picker */}
+              <div className="flex flex-col gap-1">
+                <label className="font-label-sm text-label-sm text-text-muted uppercase tracking-wider block mb-1">
+                  Attachments &amp; Artifacts
+                </label>
+                <DiscussionAttachmentPicker
+                  key={modalPickerKey}
+                  discussionId="new"
+                  onAttachmentIdsChange={setModalAttachmentIds}
+                  onUploadingChange={setIsUploadingModalAttachments}
+                  maxFiles={5}
+                />
+              </div>
+
               <div className="flex items-center justify-end gap-space-sm pt-space-md border-t border-border-subtle mt-2">
                 <button
                   type="button"
@@ -430,10 +464,10 @@ export const ProjectDiscussionTab = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || !newTitle.trim() || !newContent.trim()}
-                  className="px-5 py-2 rounded-lg bg-btn-primary hover:bg-primary-hover text-on-primary font-label-md text-label-md shadow-sm transition-all disabled:opacity-50"
+                  disabled={submitting || isUploadingModalAttachments || !newTitle.trim() || !newContent.trim()}
+                  className="px-5 py-2 rounded-lg bg-btn-primary hover:bg-primary-hover text-on-primary font-label-md text-label-md shadow-sm transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                 >
-                  {submitting ? 'Publishing...' : 'Publish Topic'}
+                  {submitting ? 'Publishing...' : isUploadingModalAttachments ? 'Uploading files...' : 'Publish Topic'}
                 </button>
               </div>
             </form>

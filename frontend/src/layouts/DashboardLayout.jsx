@@ -4,7 +4,7 @@ import Sidebar from '../components/navigation/Sidebar';
 import GlobalTopBar from '../components/navigation/GlobalTopBar';
 import GlobalPlusMenu from '../components/navigation/GlobalPlusMenu';
 import GlobalSearchOverlay from '../components/navigation/GlobalSearchOverlay';
-import {authService, notificationService, organizationService, dashboardService, connectDashboardWebSocket, safeCloseWebSocket } from '../services/api';
+import {authService, notificationService, organizationService, dashboardService, connectDashboardWebSocket, connectNotificationsWebSocket, safeCloseWebSocket } from '../services/api';
 import CreateTaskModal from '../modules/tasks/components/CreateTaskModal';
 import { taskService } from '../modules/tasks/services/taskService';
 import CreateTicketModal from '../modules/tickets/components/CreateTicketModal';
@@ -134,6 +134,17 @@ export const DashboardLayout = () => {
       }
     });
 
+    const notifWs = connectNotificationsWebSocket((event) => {
+      if (
+        event?.event === 'init' ||
+        event?.event === 'new_notification' ||
+        event?.event === 'notification_read' ||
+        event?.event === 'all_notifications_read'
+      ) {
+        refreshBadges();
+      }
+    });
+
     const handleNotifUpdate = () => {
       refreshBadges();
     };
@@ -142,6 +153,7 @@ export const DashboardLayout = () => {
     return () => {
       window.removeEventListener('notifications-updated', handleNotifUpdate);
       if (ws) safeCloseWebSocket(ws);
+      if (notifWs) safeCloseWebSocket(notifWs);
     };
   }, [location.pathname]);
 

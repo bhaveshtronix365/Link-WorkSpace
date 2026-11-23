@@ -836,44 +836,24 @@ export const connectDashboardWebSocket = (onMessage, onError, onStatusChange) =>
 // ---------------------------------------------------------------------------
 export const notificationService = {
   list: async (params = {}) => {
-    try {
-      const response = await apiClient.get('/notifications', { params });
-      return response.data;
-    } catch {
-      return { items: [], total: 0, unread_count: 0, page: 1, page_size: 20 };
-    }
+    const response = await apiClient.get('/notifications', { params });
+    return response.data;
   },
   getUnreadCount: async () => {
-    try {
-      const response = await apiClient.get('/notifications/unread-count');
-      return response.data;
-    } catch {
-      return { unread_count: 0, sla_breach_count: 0 };
-    }
+    const response = await apiClient.get('/notifications/unread-count');
+    return response.data;
   },
   getInboxCount: async () => {
-    try {
-      const response = await apiClient.get('/notifications/inbox-count');
-      return response.data?.inbox_count || 0;
-    } catch {
-      return 0;
-    }
+    const response = await apiClient.get('/notifications/inbox-count');
+    return response.data?.inbox_count || 0;
   },
   markRead: async (notificationId) => {
-    try {
-      const response = await apiClient.patch(`/notifications/${notificationId}/read`);
-      return response.data;
-    } catch {
-      return { success: false };
-    }
+    const response = await apiClient.patch(`/notifications/${notificationId}/read`);
+    return response.data;
   },
   markAllRead: async () => {
-    try {
-      const response = await apiClient.patch('/notifications/read-all');
-      return response.data;
-    } catch {
-      return { marked_count: 0 };
-    }
+    const response = await apiClient.patch('/notifications/read-all');
+    return response.data;
   },
 };
 

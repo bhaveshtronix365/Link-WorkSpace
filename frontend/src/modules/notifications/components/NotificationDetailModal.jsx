@@ -174,12 +174,12 @@ export const NotificationDetailModal = ({
             </div>
           )}
 
-          {notification.target_id && (
+          {(notification.target_label || (notification.target_id && !notification.target_id.startsWith('usr_') && notification.target_type !== 'user')) && (
             <div className="p-3 rounded-xl bg-canvas-main border border-border-subtle">
-              <span className="text-text-muted block mb-1">Reference ID</span>
+              <span className="text-text-muted block mb-1">Reference</span>
               <div className="flex items-center gap-2 font-medium text-primary font-mono">
                 <span className="material-symbols-outlined text-[16px] text-primary">tag</span>
-                <span className="truncate">{notification.target_id}</span>
+                <span className="truncate">{notification.target_label || notification.target_id}</span>
               </div>
             </div>
           )}

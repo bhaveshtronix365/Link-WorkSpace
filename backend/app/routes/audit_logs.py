@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.dependencies import get_current_user_id
-from backend.app.models import TicketActivity, Ticket, Project, User, ProjectActivity, AuditLog, Membership
+from backend.app.models import TicketActivity, Ticket, Project, User, ProjectActivity, AuditLog, Membership, TaskActivity, Task
 from backend.app.schemas import (
     AuditLogsListResponse,
     AuditLogItemRead,
@@ -43,7 +43,7 @@ def _map_audit_log_to_item(al: AuditLog) -> AuditLogItemRead:
         actor_read = UserRead(
             id=u.id,
             email=u.email,
-            full_name=u.full_name,
+            full_name=(u.display_name or u.full_name or "").strip() or "Deleted user",
             role=u.role,
             title=u.title,
             avatar_url=u.avatar_url,
@@ -81,12 +81,24 @@ def _format_event_label(action: str) -> str:
         "severity escalated": "Severity Escalation",
         "reassigned": "Ownership Reassignment",
         "reassign": "Ownership Reassignment",
+        "assignee changed": "Ownership Reassignment",
         "deadline change": "Deadline Modification",
         "deadline changed": "Deadline Modification",
         "ticket reopened": "Ticket Reopened",
         "ticket closed": "Ticket Closed",
         "ticket created": "Ticket Ingested",
         "ticket edited": "Ticket Updated",
+        "task created": "Task Created",
+        "created": "Task Created",
+        "field updated": "Task Field Updated",
+        "comment added": "Task Comment Added",
+        "comment edited": "Task Comment Edited",
+        "comment deleted": "Task Comment Deleted",
+        "attachment added": "Task Attachment Added",
+        "attachment removed": "Task Attachment Removed",
+        "ticket linked": "Ticket Linked",
+        "ticket unlinked": "Ticket Unlinked",
+        "task deleted": "Task Deleted",
         "organization_created": "Organization Created",
         "join_code_generated": "Join Code Generated",
         "join_code_revoked": "Join Code Revoked",
@@ -111,6 +123,43 @@ def _format_description(action: str, old_val: Optional[str], new_val: Optional[s
     if "close" in act:
         return f"Ticket closed: {new_val or 'Resolution completed'} on {ticket_num}"
     return f"Action '{action}' executed on {ticket_num}: {old_val or ''} -> {new_val or ''}"
+
+
+def _format_task_description(action: str, field_name: Optional[str], old_val: Optional[str], new_val: Optional[str], task_num: str, actor_name: str, meta: Optional[dict] = None) -> str:
+    meta = meta or {}
+    act = (action or "").lower()
+    if act == "created":
+        return f"{actor_name} created task {task_num}"
+    elif act == "status_changed":
+        return f"Status updated from '{old_val or 'none'}' to '{new_val or 'none'}' on {task_num}"
+    elif act == "assignee_changed":
+        old_n = meta.get("old_assignee_name") or old_val or "Unassigned"
+        new_n = meta.get("new_assignee_name") or new_val or "Unassigned"
+        return f"Assignee updated from '{old_n}' to '{new_n}' on {task_num}"
+    elif act == "field_updated":
+        fname = (field_name or "field").replace("_", " ")
+        return f"{fname.capitalize()} updated on {task_num}: '{old_val or ''}' -> '{new_val or ''}'"
+    elif act == "comment_added":
+        return f"Comment added on {task_num} by {actor_name}"
+    elif act == "comment_edited":
+        return f"Comment edited on {task_num} by {actor_name}"
+    elif act == "comment_deleted":
+        return f"Comment deleted on {task_num} by {actor_name}"
+    elif act == "attachment_added":
+        fname = meta.get("filename") or new_val or "file"
+        return f"Attachment '{fname}' added to {task_num}"
+    elif act == "attachment_removed":
+        fname = meta.get("filename") or old_val or "file"
+        return f"Attachment '{fname}' removed from {task_num}"
+    elif act == "ticket_linked":
+        tnum = meta.get("ticket_number") or new_val or "ticket"
+        return f"Ticket {tnum} linked to {task_num}"
+    elif act == "ticket_unlinked":
+        tnum = meta.get("ticket_number") or old_val or "ticket"
+        return f"Ticket {tnum} unlinked from {task_num}"
+    elif act == "task_deleted":
+        return f"Task {task_num} deleted by {actor_name}"
+    return f"Action '{action}' on {task_num} by {actor_name}"
 
 
 @router.get("/summary-legacy", response_model=List[ProjectActivityRead])
@@ -172,7 +221,7 @@ async def list_audit_actors(
         return []
 
     mem_stmt = (
-        select(User.id, User.full_name, User.email, Membership.role)
+        select(User.id, User.full_name, User.display_name, User.email, Membership.role)
         .join(Membership, Membership.user_id == User.id)
         .where(
             Membership.organization_id == org_id,
@@ -182,15 +231,17 @@ async def list_audit_actors(
     mem_res = await db.execute(mem_stmt)
     actors_by_id = {}
     for r in mem_res.all():
-        actors_by_id[r[0]] = {"id": r[0], "full_name": r[1], "email": r[2], "role": r[3]}
+        name = (r[2] or r[1] or "").strip() or "Deleted user"
+        actors_by_id[r[0]] = {"id": r[0], "full_name": name, "email": r[3], "role": r[4]}
 
     legacy_res = await db.execute(
-        select(User.id, User.full_name, User.email, User.role)
+        select(User.id, User.full_name, User.display_name, User.email, User.role)
         .where(User.organization_id == org_id)
     )
     for r in legacy_res.all():
         if r[0] not in actors_by_id:
-            actors_by_id[r[0]] = {"id": r[0], "full_name": r[1], "email": r[2], "role": r[3]}
+            name = (r[2] or r[1] or "").strip() or "Deleted user"
+            actors_by_id[r[0]] = {"id": r[0], "full_name": name, "email": r[3], "role": r[4]}
 
     actors = list(actors_by_id.values())
     actors.sort(key=lambda a: (a["full_name"] or "").lower())
@@ -336,7 +387,45 @@ async def list_audit_logs(
         count_res = await db.execute(select(func.count()).select_from(base_query.subquery()))
         ticket_count = count_res.scalar() or 0
 
-    total_count = audit_count + ticket_count
+    # Base query for TaskActivity (Task 3 Activity Feed)
+    task_act_query = (
+        select(TaskActivity)
+        .join(Task, TaskActivity.task_id == Task.id)
+        .options(
+            selectinload(TaskActivity.task),
+            selectinload(TaskActivity.actor)
+        )
+        .where(TaskActivity.organization_id == org_id)
+    )
+    if cutoff:
+        task_act_query = task_act_query.where(TaskActivity.created_at >= cutoff)
+    if actor_id and actor_id.lower() != "all":
+        task_act_query = task_act_query.where(TaskActivity.actor_id == actor_id)
+    if severity and severity.lower() != "all":
+        task_act_query = task_act_query.where(false())
+    if status_filter and status_filter.lower() != "all":
+        task_act_query = task_act_query.where(Task.status == status_filter.lower())
+    if event_type and event_type.lower() != "all":
+        task_act_query = task_act_query.where(TaskActivity.action.ilike(f"%{event_type}%"))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        task_act_query = task_act_query.outerjoin(User, TaskActivity.actor_id == User.id).where(
+            or_(
+                Task.task_number.ilike(term),
+                Task.title.ilike(term),
+                TaskActivity.action.ilike(term),
+                TaskActivity.old_value.ilike(term),
+                TaskActivity.new_value.ilike(term),
+                User.full_name.ilike(term),
+                User.display_name.ilike(term),
+                User.email.ilike(term),
+            )
+        )
+
+    task_count_res = await db.execute(select(func.count()).select_from(task_act_query.subquery()))
+    task_act_count = task_count_res.scalar() or 0
+
+    total_count = audit_count + ticket_count + task_act_count
 
     # Calculate real KPIs across recent 24h
     cutoff_24h = now - timedelta(days=1)
@@ -380,8 +469,24 @@ async def list_audit_logs(
     )
     v_prev_audit = (await db.execute(audit_prev_query)).scalar() or 0
 
-    v24 = len(recent_24h_activities) + v24_audit
-    v_prev_24h = v_prev_24h_ticket + v_prev_audit
+    # 24h task activities count
+    task_24h_query = (
+        select(func.count(TaskActivity.id))
+        .where(TaskActivity.organization_id == org_id)
+        .where(TaskActivity.created_at >= cutoff_24h)
+    )
+    v24_task = (await db.execute(task_24h_query)).scalar() or 0
+
+    task_prev_query = (
+        select(func.count(TaskActivity.id))
+        .where(TaskActivity.organization_id == org_id)
+        .where(TaskActivity.created_at >= cutoff_48h)
+        .where(TaskActivity.created_at < cutoff_24h)
+    )
+    v_prev_task = (await db.execute(task_prev_query)).scalar() or 0
+
+    v24 = len(recent_24h_activities) + v24_audit + v24_task
+    v_prev_24h = v_prev_24h_ticket + v_prev_audit + v_prev_task
 
     if v_prev_24h > 0:
         event_volume_delta_pct = round(((v24 - v_prev_24h) / v_prev_24h * 100), 1)
@@ -423,7 +528,7 @@ async def list_audit_logs(
                 actor_read = UserRead(
                     id=u.id,
                     email=u.email,
-                    full_name=u.full_name,
+                    full_name=(u.display_name or u.full_name or "").strip() or "Deleted user",
                     role=u.role,
                     title=u.title,
                     avatar_url=u.avatar_url,
@@ -447,6 +552,50 @@ async def list_audit_logs(
                 description=_format_description(a.action, a.old_value, a.new_value, t.ticket_number if t else "ticket"),
                 previous_value=a.old_value,
                 new_value=a.new_value,
+                immutable_hash=fingerprint
+            ))
+
+    if task_act_count > 0:
+        task_res = await db.execute(task_act_query.order_by(desc(TaskActivity.created_at)).limit(fetch_limit))
+        for ta in task_res.scalars().all():
+            fingerprint = _compute_record_fingerprint(ta.id, None, ta.actor_id, ta.action, ta.created_at)
+            log_ref = f"#LOG-{abs(hash(ta.id)) % 90000 + 10000}"
+            task_obj = ta.task
+            u = ta.actor
+
+            actor_read = None
+            if u:
+                actor_read = UserRead(
+                    id=u.id,
+                    email=u.email,
+                    full_name=(u.display_name or u.full_name or "").strip() or "Deleted user",
+                    role=u.role,
+                    title=u.title,
+                    avatar_url=u.avatar_url,
+                    department=u.department,
+                    is_active=u.is_active,
+                    created_at=u.created_at
+                )
+
+            task_num = task_obj.task_number if task_obj else "TASK"
+            task_title = task_obj.title if task_obj else "Task"
+            actor_name = actor_read.full_name if actor_read else "Deleted user"
+
+            combined_items.append(AuditLogItemRead(
+                id=ta.id,
+                log_ref=log_ref,
+                created_at=ta.created_at,
+                ticket_id=None,
+                ticket_number=task_num,
+                ticket_title=task_title,
+                ticket_severity=None,
+                ticket_status=task_obj.status if task_obj else None,
+                actor=actor_read,
+                event_type=ta.action,
+                event_label=_format_event_label(ta.action),
+                description=_format_task_description(ta.action, ta.field_name, ta.old_value, ta.new_value, task_num, actor_name, ta.meta),
+                previous_value=ta.old_value,
+                new_value=ta.new_value,
                 immutable_hash=fingerprint
             ))
 
@@ -505,22 +654,72 @@ async def get_audit_log_detail(
         )
         audit_res = await db.execute(audit_query)
         al = audit_res.scalar_one_or_none()
-        if not al:
+        if al:
+            u = al.actor
+            fingerprint = _compute_record_fingerprint(al.id, None, al.actor_id, al.action, al.created_at)
+            log_ref = f"#LOG-{abs(hash(al.id)) % 90000 + 10000}"
+
+            actor_read = None
+            if u:
+                actor_read = UserRead(
+                    id=u.id,
+                    email=u.email,
+                    full_name=(u.display_name or u.full_name or "").strip() or "Deleted user",
+                    role=u.role,
+                    title=u.title,
+                    avatar_url=u.avatar_url,
+                    department=u.department,
+                    is_active=u.is_active,
+                    created_at=u.created_at
+                )
+
+            return AuditLogDetailRead(
+                id=al.id,
+                log_ref=log_ref,
+                created_at=al.created_at,
+                ticket_id=None,
+                ticket_number=None,
+                ticket_title="Organization Event",
+                ticket_severity=None,
+                ticket_status=None,
+                actor=actor_read,
+                event_type=al.action,
+                event_label=_format_event_label(al.action),
+                description=al.details or _format_event_label(al.action),
+                previous_value=None,
+                new_value=None,
+                immutable_hash=fingerprint,
+                originating_interface="Not recorded",
+                auth_host="Not recorded",
+                context_justification=None,
+                target_entity_details={"organization_id": al.organization_id, "action": al.action, "details": al.details}
+            )
+
+        # Fallback to TaskActivity (Task 3 Activity Feed)
+        task_act_res = await db.execute(
+            select(TaskActivity)
+            .options(
+                selectinload(TaskActivity.task),
+                selectinload(TaskActivity.actor)
+            )
+            .where(TaskActivity.id == log_id, TaskActivity.organization_id == org_id)
+        )
+        ta = task_act_res.scalar_one_or_none()
+        if not ta:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Audit log entry {log_id} not found."
             )
 
-        u = al.actor
-        fingerprint = _compute_record_fingerprint(al.id, None, al.actor_id, al.action, al.created_at)
-        log_ref = f"#LOG-{abs(hash(al.id)) % 90000 + 10000}"
-
+        task_obj = ta.task
+        u = ta.actor
         actor_read = None
         if u:
+            real_name = (u.display_name or u.full_name or "").strip() or "Deleted user"
             actor_read = UserRead(
                 id=u.id,
                 email=u.email,
-                full_name=u.full_name,
+                full_name=real_name,
                 role=u.role,
                 title=u.title,
                 avatar_url=u.avatar_url,
@@ -529,26 +728,32 @@ async def get_audit_log_detail(
                 created_at=u.created_at
             )
 
+        fingerprint = _compute_record_fingerprint(ta.id, None, ta.actor_id, ta.action, ta.created_at)
+        log_ref = f"#LOG-{abs(hash(ta.id)) % 90000 + 10000}"
+        task_num = task_obj.task_number if task_obj else "TASK"
+        task_title = task_obj.title if task_obj else "Task"
+        actor_name = actor_read.full_name if actor_read else "Deleted user"
+
         return AuditLogDetailRead(
-            id=al.id,
+            id=ta.id,
             log_ref=log_ref,
-            created_at=al.created_at,
+            created_at=ta.created_at,
             ticket_id=None,
-            ticket_number=None,
-            ticket_title="Organization Event",
+            ticket_number=task_num,
+            ticket_title=task_title,
             ticket_severity=None,
-            ticket_status=None,
+            ticket_status=task_obj.status if task_obj else None,
             actor=actor_read,
-            event_type=al.action,
-            event_label=_format_event_label(al.action),
-            description=al.details or _format_event_label(al.action),
-            previous_value=None,
-            new_value=None,
+            event_type=ta.action,
+            event_label=_format_event_label(ta.action),
+            description=_format_task_description(ta.action, ta.field_name, ta.old_value, ta.new_value, task_num, actor_name, ta.meta),
+            previous_value=ta.old_value,
+            new_value=ta.new_value,
             immutable_hash=fingerprint,
-            originating_interface="Not recorded",
-            auth_host="Not recorded",
+            originating_interface="Web Application",
+            auth_host="Task Activity Stream",
             context_justification=None,
-            target_entity_details={"organization_id": al.organization_id, "action": al.action, "details": al.details}
+            target_entity_details={"task_id": ta.task_id, "task_number": task_num, "meta": ta.meta or {}}
         )
 
     t = a.ticket
@@ -561,7 +766,7 @@ async def get_audit_log_detail(
         actor_read = UserRead(
             id=u.id,
             email=u.email,
-            full_name=u.full_name,
+            full_name=(u.display_name or u.full_name or "").strip() or "Deleted user",
             role=u.role,
             title=u.title,
             avatar_url=u.avatar_url,

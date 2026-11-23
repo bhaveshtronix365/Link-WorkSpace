@@ -1,32 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ticketsService } from '../../../services/ticketsService';
 
-export const CloseTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
+export const CloseTicketModal = ({
+  isOpen,
+  onClose,
+  ticket,
+  isVerifyClose = false,
+  onUpdated,
+  onError,
+}) => {
   const [resolutionSummary, setResolutionSummary] = useState('');
   const [commitSha, setCommitSha] = useState('');
   const [prReference, setPrReference] = useState('');
-  const [verifiedInStaging, setVerifiedInStaging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (isOpen && ticket) {
-      setResolutionSummary('');
+      setResolutionSummary(isVerifyClose ? 'Verified and closed by organization owner.' : '');
       setCommitSha('');
       setPrReference('');
-      setVerifiedInStaging(false);
       setError(null);
+      setSubmitting(false);
+      submittingRef.current = false;
     }
-  }, [isOpen, ticket]);
+  }, [isOpen, ticket, isVerifyClose]);
 
   if (!isOpen || !ticket) return null;
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!resolutionSummary.trim()) {
-      setError('Resolution summary and root cause notes are required.');
-      return;
-    }
+    e?.preventDefault?.();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
+    const summary = resolutionSummary.trim() || (isVerifyClose ? 'Verified and closed by organization owner.' : '');
 
     setSubmitting(true);
     setError(null);
@@ -37,18 +45,29 @@ export const CloseTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
         .join(' • ');
 
       const payload = {
-        resolution_summary: resolutionSummary.trim(),
-        verified_by: verifiedInStaging ? 'Staging Verified' : 'Reporter',
+        message: summary,
+        resolution_summary: summary,
+        verified_by: isVerifyClose ? 'Owner Verified' : 'Reporter',
         pr_or_commit: prOrCommit || undefined,
         operational_signoff: true,
+        version: ticket.version ?? 0,
       };
 
       const updated = await ticketsService.closeTicket(ticket.id, payload);
-      if (onUpdated) onUpdated(updated);
+      onUpdated?.(updated);
       onClose();
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Failed to close ticket.');
+      console.error('Failed to close ticket:', err);
+      const errMsg =
+        err.response?.data?.error?.message ||
+        err.response?.data?.detail?.message ||
+        err.response?.data?.detail ||
+        err.message ||
+        'Failed to close ticket. Please refresh and try again.';
+      setError(errMsg);
+      onError?.(errMsg);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -64,16 +83,18 @@ export const CloseTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
         <div className="p-space-lg pb-space-sm bg-surface-card flex items-start justify-between border-b border-border-subtle">
           <div className="space-y-1">
             <div className="flex items-center gap-space-xs">
-              <span className="w-2 h-2 rounded-full bg-text-primary" />
+              <span className="w-2 h-2 rounded-full bg-status-closed" />
               <span className="font-label-sm text-label-sm text-text-muted uppercase tracking-wider">
-                Lifecycle State
+                Owner Action
               </span>
             </div>
             <h2 className="font-headline-md text-headline-md text-text-primary tracking-tight">
-              Close Ticket
+              {isVerifyClose ? 'Verify & Close Ticket' : 'Close Ticket'}
             </h2>
             <p className="font-body-sm text-body-sm text-text-secondary">
-              Permanently finalize ticket lifecycle and archive records.
+              {isVerifyClose
+                ? 'Confirm resolution verification and finalize ticket closure.'
+                : 'Permanently finalize ticket lifecycle and archive records.'}
             </p>
           </div>
           <button
@@ -88,9 +109,13 @@ export const CloseTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-space-lg space-y-space-md overflow-y-auto max-h-[75vh]">
           {error && (
-            <div className="p-3 rounded-lg bg-error-container text-on-error-container font-body-sm text-body-sm flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">error</span>
-              <span>{error}</span>
+            <div
+              role="alert"
+              aria-live="polite"
+              className="p-3 rounded-lg bg-error-container text-on-error-container font-body-sm text-body-sm flex items-start gap-2"
+            >
+              <span className="material-symbols-outlined text-base mt-0.5 shrink-0">error</span>
+              <span className="flex-1 font-semibold">{error}</span>
             </div>
           )}
 
@@ -106,65 +131,46 @@ export const CloseTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
                   {ticket.severity}
                 </span>
               </div>
-              <span className="font-label-sm text-label-sm px-2 py-0.5 rounded-full bg-status-resolved/15 text-status-resolved font-semibold capitalize">
+              <span className="font-label-sm text-label-sm px-2.5 py-0.5 rounded-full bg-status-closed/15 text-status-closed font-semibold capitalize">
                 {ticket.status}
               </span>
             </div>
             <p className="font-label-md text-label-md text-text-primary truncate">{ticket.title}</p>
           </div>
 
-          {/* Resolution Summary Card */}
-          <div className="p-space-md bg-canvas-lavender rounded-xl flex flex-col gap-space-sm border border-border-subtle">
-            <span className="font-label-md text-label-md text-text-primary flex items-center gap-1.5 font-semibold">
-              <span className="material-symbols-outlined text-base text-status-resolved">task_alt</span>
-              Resolution Summary
-            </span>
+          {/* Short confirmation prompt */}
+          {isVerifyClose ? (
+            <div className="p-3 bg-status-resolved/10 border border-status-resolved/30 rounded-lg flex items-start gap-2 text-body-sm text-text-secondary">
+              <span className="material-symbols-outlined text-status-resolved text-base mt-0.5 shrink-0">
+                verified
+              </span>
+              <div>
+                <p className="font-semibold text-text-primary">Confirmation</p>
+                <p>
+                  You are verifying and closing this ticket as the organization owner. This action finalizes the incident SLA and moves the ticket to closed state.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 bg-surface-container-low rounded-lg text-body-sm text-text-secondary">
+              As the organization owner, confirm that work is complete and this ticket can be closed.
+            </div>
+          )}
+
+          {/* Resolution Summary / Closure Notes */}
+          <div className="space-y-1.5">
+            <label className="font-label-md text-label-md text-text-primary flex items-center justify-between">
+              <span>Closure &amp; Verification Notes</span>
+              <span className="font-label-sm text-label-sm text-text-muted">Optional</span>
+            </label>
             <textarea
               rows="3"
               value={resolutionSummary}
               onChange={(e) => setResolutionSummary(e.target.value)}
-              placeholder="State the resolution deployed, circuit breaker parameters, or RCA findings..."
-              className="w-full p-2.5 bg-surface-card rounded-lg font-body-sm text-body-sm text-text-primary outline-none shadow-sm resize-none border border-border-subtle"
-              required
+              placeholder="e.g. Root cause isolated to outdated cache config. Verification confirmed in production."
+              className="w-full p-3 bg-canvas-main rounded-lg border border-border-subtle font-body-sm text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-primary transition-colors resize-y"
             />
           </div>
-
-          {/* Verification Details */}
-          <div className="grid grid-cols-2 gap-space-sm">
-            <div className="space-y-1">
-              <label className="font-label-sm text-label-sm text-text-secondary">Commit / SHA</label>
-              <input
-                type="text"
-                value={commitSha}
-                onChange={(e) => setCommitSha(e.target.value)}
-                placeholder="#e8f902c"
-                className="w-full h-9 px-2.5 bg-canvas-main rounded font-mono text-body-sm text-text-primary outline-none border border-border-subtle"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="font-label-sm text-label-sm text-text-secondary">PR Reference</label>
-              <input
-                type="text"
-                value={prReference}
-                onChange={(e) => setPrReference(e.target.value)}
-                placeholder="PR #402"
-                className="w-full h-9 px-2.5 bg-canvas-main rounded font-mono text-body-sm text-text-primary outline-none border border-border-subtle"
-              />
-            </div>
-          </div>
-
-          {/* Checkbox verification */}
-          <label className="flex items-center gap-2 cursor-pointer p-space-xs">
-            <input
-              type="checkbox"
-              checked={verifiedInStaging}
-              onChange={(e) => setVerifiedInStaging(e.target.checked)}
-              className="w-4 h-4 text-btn-primary rounded border-border-subtle"
-            />
-            <span className="font-body-sm text-body-sm text-text-secondary">
-              Verified in Staging and confirmed by project leads
-            </span>
-          </label>
         </form>
 
         {/* Footer */}
@@ -173,7 +179,7 @@ export const CloseTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="h-10 px-space-md rounded-lg bg-surface-container-low text-text-primary hover:bg-canvas-lavender font-label-md text-label-md transition-colors"
+            className="h-10 px-space-md rounded-lg bg-surface-container hover:bg-surface-container-high text-text-primary font-label-md text-label-md transition-colors"
           >
             Cancel
           </button>
@@ -181,10 +187,14 @@ export const CloseTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
             type="button"
             onClick={handleSubmit}
             disabled={submitting}
-            className="h-10 px-space-lg bg-text-primary hover:bg-black text-on-primary font-label-md text-label-md rounded-lg flex items-center gap-1.5 shadow-sm transition-colors font-semibold disabled:opacity-50"
+            className={`h-10 px-space-lg font-label-md text-label-md rounded-lg flex items-center gap-1.5 shadow-sm transition-all font-semibold cursor-pointer ${
+              isVerifyClose
+                ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white'
+                : 'bg-btn-primary hover:bg-btn-primary/90 text-on-primary'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            <span className="material-symbols-outlined text-base">inventory_2</span>
-            <span>{submitting ? 'Closing...' : 'Close & Archive Ticket'}</span>
+            <span className="material-symbols-outlined text-base">check_circle</span>
+            <span>{submitting ? 'Closing...' : isVerifyClose ? 'Verify & Close' : 'Close Ticket'}</span>
           </button>
         </div>
       </div>
@@ -193,4 +203,3 @@ export const CloseTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
 };
 
 export default CloseTicketModal;
-

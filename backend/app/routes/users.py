@@ -768,11 +768,16 @@ async def list_team_members(
     db: AsyncSession = Depends(get_db)
 ):
     """List team members strictly within the authenticated user's organization."""
-    if not current_user.organization_id:
+    org_id = current_user.organization_id
+    if not org_id and getattr(current_user, "memberships", None):
+        active_m = next((m for m in current_user.memberships if getattr(m, "status", None) == "active"), None)
+        if active_m:
+            org_id = getattr(active_m, "organization_id", None)
+    if not org_id:
         return [current_user]
 
     eff_dept = department or team
-    wf_data = await get_organization_workforce_data(db, current_user.organization_id, department=eff_dept)
+    wf_data = await get_organization_workforce_data(db, org_id, department=eff_dept)
     members = wf_data["members"]
 
     if status and status.lower() != "all":

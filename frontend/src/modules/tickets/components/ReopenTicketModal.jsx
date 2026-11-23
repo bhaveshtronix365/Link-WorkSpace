@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ticketsService } from '../../../services/ticketsService';
 
-export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
+export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated, onError }) => {
   const [reopenReason, setReopenReason] = useState('');
   const [telemetryNotes, setTelemetryNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -12,6 +12,7 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
       setReopenReason('');
       setTelemetryNotes('');
       setError(null);
+      setSubmitting(false);
     }
   }, [isOpen, ticket]);
 
@@ -28,17 +29,28 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
     setError(null);
 
     try {
+      const fullMessage = [reopenReason, telemetryNotes.trim()].filter(Boolean).join(': ');
       const payload = {
+        message: fullMessage,
         reason: reopenReason,
         regression_context: telemetryNotes.trim() || undefined,
         operational_notes: telemetryNotes.trim() || undefined,
+        version: ticket.version,
       };
 
       const updated = await ticketsService.reopenTicket(ticket.id, payload);
-      if (onUpdated) onUpdated(updated);
+      onUpdated?.(updated);
       onClose();
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Failed to reopen ticket.');
+      console.error('Failed to reopen ticket:', err);
+      const errMsg =
+        err.response?.data?.error?.message ||
+        err.response?.data?.detail?.message ||
+        err.response?.data?.detail ||
+        err.message ||
+        'Failed to reopen ticket. Please refresh and try again.';
+      setError(errMsg);
+      onError?.(errMsg);
     } finally {
       setSubmitting(false);
     }
@@ -57,14 +69,14 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
             <div className="flex items-center gap-space-xs">
               <span className="w-2 h-2 rounded-full bg-status-wip" />
               <span className="font-label-sm text-label-sm text-text-muted uppercase tracking-wider">
-                Lifecycle State
+                Owner Action
               </span>
             </div>
             <h2 className="font-headline-md text-headline-md text-text-primary tracking-tight">
               Reopen Ticket
             </h2>
             <p className="font-body-sm text-body-sm text-text-secondary">
-              Return a resolved or closed issue to active triage and operational tracking.
+              Return a closed incident to active triage and operational tracking.
             </p>
           </div>
           <button
@@ -79,9 +91,13 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-space-lg space-y-space-md overflow-y-auto max-h-[75vh]">
           {error && (
-            <div className="p-3 rounded-lg bg-error-container text-on-error-container font-body-sm text-body-sm flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">error</span>
-              <span>{error}</span>
+            <div
+              role="alert"
+              aria-live="polite"
+              className="p-3 rounded-lg bg-error-container text-on-error-container font-body-sm text-body-sm flex items-start gap-2"
+            >
+              <span className="material-symbols-outlined text-base mt-0.5 shrink-0">error</span>
+              <span className="flex-1 font-semibold">{error}</span>
             </div>
           )}
 
@@ -97,8 +113,7 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
                   {ticket.severity}
                 </span>
               </div>
-              <span className="font-label-sm text-label-sm px-2.5 py-0.5 rounded-full bg-status-resolved/15 text-status-resolved font-semibold flex items-center gap-1 capitalize">
-                <span className="material-symbols-outlined text-xs">done_all</span>
+              <span className="font-label-sm text-label-sm px-2.5 py-0.5 rounded-full bg-status-closed/15 text-status-closed font-semibold capitalize">
                 {ticket.status}
               </span>
             </div>
@@ -113,7 +128,7 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
                 Operational Workflow Effect
               </span>
               <p className="font-body-sm text-body-sm text-text-secondary leading-relaxed">
-                Reopening will transition this ticket back to <strong className="text-text-primary">Open</strong> status, notify the original assignee and project leads, and resume SLA monitoring.
+                Reopening will transition this ticket back to <strong className="text-text-primary">Open</strong> status, notify the original assignee and reporter, and resume SLA monitoring.
               </p>
             </div>
           </div>
@@ -143,7 +158,7 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
           {/* Incident Details & Telemetry Notes */}
           <div className="flex flex-col gap-space-xs">
             <label className="font-label-md text-label-md text-text-primary flex items-center justify-between">
-              <span>Incident Details & Telemetry Notes</span>
+              <span>Incident Details &amp; Telemetry Notes</span>
               <span className="font-label-sm text-label-sm text-text-muted">Trace / Alert Link</span>
             </label>
             <textarea
@@ -169,7 +184,7 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || !reopenReason}
             className="h-10 px-space-lg bg-primary-container hover:bg-primary-hover active:bg-primary text-on-primary font-label-md text-label-md rounded-lg flex items-center gap-1.5 shadow-sm transition-colors font-semibold disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-base">restart_alt</span>
@@ -182,4 +197,3 @@ export const ReopenTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
 };
 
 export default ReopenTicketModal;
-

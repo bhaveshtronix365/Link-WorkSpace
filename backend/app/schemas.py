@@ -523,11 +523,16 @@ class TaskCreate(BaseSchema):
     description: Optional[str] = None
     status: Optional[str] = "to_do"
     priority: Optional[str] = "medium"
+    task_type: Optional[str] = "feature"
+    story_points: Optional[int] = None
+    due_date: Optional[datetime] = None
     project_id: Optional[str] = None
     assigned_to_id: Optional[str] = None
     assignee_id: Optional[str] = None
     reporter_id: Optional[str] = None
     assigner_id: Optional[str] = None
+    ticket_id: Optional[str] = None
+    ticket_ids: Optional[List[str]] = None
 
 
 class TaskUpdate(BaseSchema):
@@ -556,6 +561,34 @@ class TaskRead(TaskBase):
     assigner: Optional[UserRead] = None
 
 
+class TaskSummary(BaseSchema):
+    id: str
+    key: str
+    title: str
+    status: str
+    assignee_name: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def from_task_orm(cls, data):
+        if hasattr(data, "__dict__") or not isinstance(data, dict):
+            key = getattr(data, "task_number", None) or getattr(data, "key", "")
+            assignee = data.__dict__.get("assignee") if hasattr(data, "__dict__") else getattr(data, "assignee", None)
+            assignee_name = None
+            if assignee:
+                assignee_name = (getattr(assignee, "display_name", None) or getattr(assignee, "full_name", None) or "").strip() or None
+            return {
+                "id": getattr(data, "id", ""),
+                "key": key,
+                "title": getattr(data, "title", ""),
+                "status": getattr(data, "status", ""),
+                "assignee_name": assignee_name,
+                "due_date": getattr(data, "due_date", None),
+            }
+        return data
+
+
 class TicketBase(BaseSchema):
     title: str
     description: Optional[str] = None
@@ -568,6 +601,8 @@ class TicketBase(BaseSchema):
     rca_trigger: Optional[str] = None
     rca_mitigation: Optional[str] = None
     rca_action_items: Optional[str] = None
+    version: Optional[int] = 0
+    task_id: Optional[str] = None
 
 
 class TicketCreate(BaseSchema):
@@ -575,7 +610,8 @@ class TicketCreate(BaseSchema):
     description: Optional[str] = None
     severity: Optional[str] = "major"
     status: Optional[str] = "open"
-    project_id: str
+    project_id: Optional[str] = None
+    task_id: Optional[str] = None
     assignee_id: Optional[str] = None
     reporter_id: Optional[str] = None
     deadline: Optional[datetime] = None
@@ -592,6 +628,7 @@ class TicketUpdate(BaseSchema):
     title: Optional[str] = None
     description: Optional[str] = None
     project_id: Optional[str] = None
+    task_id: Optional[str] = None
     severity: Optional[str] = None
     status: Optional[str] = None
     assignee_id: Optional[str] = None
@@ -629,32 +666,76 @@ class TicketDeadlineChangeRequest(BaseSchema):
     operational_remarks: Optional[str] = None
 
 
+class TicketAcceptRequest(BaseSchema):
+    version: Optional[int] = None
+
+
+class TicketPassRequest(BaseSchema):
+    to_user_id: str
+    message: str = Field(..., min_length=10, max_length=1000)
+    attachment_ids: Optional[List[str]] = None
+    version: Optional[int] = None
+
+
+class TicketHoldRequest(BaseSchema):
+    reason: str = Field(..., min_length=1, max_length=500)
+    version: Optional[int] = None
+
+
+class TicketResumeRequest(BaseSchema):
+    version: Optional[int] = None
+
+
+class TicketOwnerReassignRequest(BaseSchema):
+    assignee_id: str
+    message: str = Field(..., min_length=10, max_length=1000)
+    attachment_ids: Optional[List[str]] = None
+    version: Optional[int] = None
+
+
 class TicketReopenRequest(BaseSchema):
-    classification: str
+    message: Optional[str] = None
+    reason: Optional[str] = None
+    classification: Optional[str] = None
     telemetry_notes: Optional[str] = None
+    version: Optional[int] = None
 
 
 class TicketCloseRequest(BaseSchema):
-    resolution_summary: str
+    message: Optional[str] = None
+    resolution_summary: Optional[str] = None
     commit_sha: Optional[str] = None
     pr_reference: Optional[str] = None
     verified_in_staging: bool = False
+    version: Optional[int] = None
 
 
 
 class TicketCommentCreate(BaseSchema):
-    content: str
+    content: Optional[str] = None
     is_internal: bool = False
+    attachment_ids: Optional[List[str]] = None
+
+    @model_validator(mode="after")
+    def validate_content_or_attachments(self) -> "TicketCommentCreate":
+        has_text = bool(self.content and self.content.strip())
+        has_attachments = bool(self.attachment_ids and len(self.attachment_ids) > 0)
+        if not has_text and not has_attachments:
+            raise ValueError("Comment must include text content or at least one attachment.")
+        if self.attachment_ids and len(self.attachment_ids) > 5:
+            raise ValueError("A comment can have at most 5 attachments.")
+        return self
 
 
 class TicketCommentRead(BaseSchema):
     id: str
     ticket_id: str
     author_id: str
-    content: str
+    content: Optional[str] = None
     is_internal: bool = False
     created_at: datetime
     author: Optional[UserRead] = None
+    attachments: List["TicketAttachmentRead"] = Field(default_factory=list)
 
 
 class TicketAttachmentCreate(BaseSchema):
@@ -665,9 +746,15 @@ class TicketAttachmentCreate(BaseSchema):
 
 class TicketAttachmentRead(BaseSchema):
     id: str
-    ticket_id: str
+    ticket_id: Optional[str] = None
     uploader_id: str
     name: str
+    original_name: Optional[str] = None
+    stored_name: Optional[str] = None
+    content_type: Optional[str] = None
+    comment_id: Optional[str] = None
+    discussion_id: Optional[str] = None
+    discussion_comment_id: Optional[str] = None
     size_bytes: int = 0
     file_url: str = ""
     created_at: datetime
@@ -685,10 +772,28 @@ class TicketActivityRead(BaseSchema):
     actor: Optional[UserRead] = None
 
 
+class TicketHandoffRead(BaseSchema):
+    id: str
+    ticket_id: str
+    from_user_id: str
+    to_user_id: str
+    from_user: Optional[UserRead] = None
+    to_user: Optional[UserRead] = None
+    message: Optional[str] = None
+    status_before: Optional[str] = None
+    status_after: Optional[str] = None
+    kind: str = "pass"
+    created_at: datetime
+    attachments: List[TicketAttachmentRead] = Field(default_factory=list)
+
+
 class TicketRead(TicketBase):
     id: str
     ticket_number: str
     project_id: str
+    task_id: Optional[str] = None
+    task: Optional[TaskSummary] = None
+    version: Optional[int] = 0
     assignee_id: Optional[str] = None
     reporter_id: Optional[str] = None
     created_at: datetime
@@ -698,6 +803,7 @@ class TicketRead(TicketBase):
     comments: List[TicketCommentRead] = Field(default_factory=list)
     attachments: List[TicketAttachmentRead] = Field(default_factory=list)
     activities: List[TicketActivityRead] = Field(default_factory=list)
+    handoffs: List[TicketHandoffRead] = Field(default_factory=list)
     is_breached: bool = False
     breached_at: Optional[datetime] = None
     overrun_duration: Optional[str] = None
@@ -708,6 +814,7 @@ class TicketStats(BaseSchema):
     total: int = 0
     open: int = 0
     wip: int = 0
+    passed: int = 0
     on_hold: int = 0
     resolved: int = 0
     closed: int = 0
@@ -733,11 +840,22 @@ class CriticalIssuesResponse(BaseSchema):
 
 # --- Discussions Schemas ---
 class DiscussionCommentBase(BaseSchema):
-    content: str
+    content: Optional[str] = None
 
 
 class DiscussionCommentCreate(BaseSchema):
-    content: str
+    content: Optional[str] = None
+    attachment_ids: Optional[List[str]] = None
+
+    @model_validator(mode="after")
+    def validate_content_or_attachments(self) -> "DiscussionCommentCreate":
+        has_text = bool(self.content and self.content.strip())
+        has_attachments = bool(self.attachment_ids and len(self.attachment_ids) > 0)
+        if not has_text and not has_attachments:
+            raise ValueError("Reply must include text content or at least one attachment.")
+        if self.attachment_ids and len(self.attachment_ids) > 5:
+            raise ValueError("A reply can have at most 5 attachments.")
+        return self
 
 
 class DiscussionCommentRead(DiscussionCommentBase):
@@ -746,6 +864,7 @@ class DiscussionCommentRead(DiscussionCommentBase):
     author_id: str
     created_at: datetime
     author: Optional[UserRead] = None
+    attachments: List[TicketAttachmentRead] = Field(default_factory=list)
 
 
 class DiscussionBase(BaseSchema):
@@ -763,6 +882,7 @@ class DiscussionCreate(BaseSchema):
     category: Optional[str] = "general"
     is_pinned: Optional[bool] = False
     reactions: Optional[str] = "{}"
+    attachment_ids: Optional[List[str]] = None
 
 
 class DiscussionRead(DiscussionBase):
@@ -773,6 +893,7 @@ class DiscussionRead(DiscussionBase):
     updated_at: Optional[datetime] = None
     author: Optional[UserRead] = None
     comments: List[DiscussionCommentRead] = Field(default_factory=list)
+    attachments: List[TicketAttachmentRead] = Field(default_factory=list)
 
 
 # --- Project Files Schemas ---

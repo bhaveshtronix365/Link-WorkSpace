@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { discussionsService } from '../../../services/discussionsService';
 import { lockScroll, unlockScroll } from '../../../utils/scrollLock';
+import DiscussionAttachmentPicker from './DiscussionAttachmentPicker';
 
 export const CreateDiscussionModal = ({ isOpen, onClose, onDiscussionCreated }) => {
   const triggerRef = useRef(null);
@@ -12,7 +13,8 @@ export const CreateDiscussionModal = ({ isOpen, onClose, onDiscussionCreated }) 
   const [content, setContent] = useState('');
   const [isPinned, setIsPinned] = useState(false);
   const [sendNotification, setSendNotification] = useState(true);
-  const [attachments, setAttachments] = useState([]);
+  const [attachmentIds, setAttachmentIds] = useState([]);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -51,22 +53,6 @@ export const CreateDiscussionModal = ({ isOpen, onClose, onDiscussionCreated }) 
 
   if (!isOpen || typeof document === 'undefined') return null;
 
-  const handleFileUpload = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      const newFiles = files.map((f) => ({
-        name: f.name,
-        size: `${(f.size / 1024).toFixed(0)} KB`,
-        progress: 100,
-      }));
-      setAttachments((prev) => [...prev, ...newFiles]);
-    }
-  };
-
-  const removeAttachment = (index) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -86,6 +72,7 @@ export const CreateDiscussionModal = ({ isOpen, onClose, onDiscussionCreated }) 
         content: content.trim(),
         category: discussionType,
         is_pinned: isPinned,
+        attachment_ids: attachmentIds.length > 0 ? attachmentIds : undefined,
       };
       const created = await discussionsService.createDiscussion(payload);
       if (onDiscussionCreated) {
@@ -93,7 +80,7 @@ export const CreateDiscussionModal = ({ isOpen, onClose, onDiscussionCreated }) 
       }
       onClose();
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Failed to create discussion');
+      setError(err?.response?.data?.detail?.message || err?.response?.data?.detail || 'Failed to create discussion');
     } finally {
       setIsSubmitting(false);
     }
@@ -303,50 +290,16 @@ export const CreateDiscussionModal = ({ isOpen, onClose, onDiscussionCreated }) 
           </div>
 
           {/* Attachments Section */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
-                Attached Artifacts
-              </span>
-              <label className="text-primary hover:text-primary-hover font-label-sm text-label-sm flex items-center gap-1 cursor-pointer transition-colors">
-                <span className="material-symbols-outlined text-[16px]">add_circle</span>
-                <span>Add Attachment</span>
-                <input type="file" multiple className="hidden" onChange={handleFileUpload} />
-              </label>
-            </div>
-            {attachments.length > 0 && (
-              <div className="space-y-2">
-                {attachments.map((file, idx) => (
-                  <div key={idx} className="p-3 bg-canvas-lavender/50 rounded-xl flex flex-col gap-2 border border-border-subtle">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary shrink-0">
-                          <span className="material-symbols-outlined text-[18px]">description</span>
-                        </div>
-                        <div className="truncate">
-                          <p className="font-label-md text-label-md text-text-primary truncate">{file.name}</p>
-                          <p className="font-body-sm text-body-sm text-text-muted">{file.size} • Uploaded</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="px-2 py-0.5 rounded-full bg-status-resolved/15 text-status-resolved font-label-sm text-label-sm flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[14px]">check</span>
-                          <span>100% Ready</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeAttachment(idx)}
-                          className="p-1 rounded text-text-muted hover:text-severity-blocker transition-colors"
-                          title="Remove attachment"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">close</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="space-y-1">
+            <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider block mb-1">
+              Attached Artifacts &amp; Files
+            </span>
+            <DiscussionAttachmentPicker
+              discussionId="new"
+              onAttachmentIdsChange={setAttachmentIds}
+              onUploadingChange={setIsUploadingAttachments}
+              maxFiles={5}
+            />
           </div>
 
           {/* Admin Flags */}
@@ -397,11 +350,13 @@ export const CreateDiscussionModal = ({ isOpen, onClose, onDiscussionCreated }) 
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="px-5 py-2 rounded-lg bg-btn-primary hover:bg-primary-hover text-on-primary font-label-md text-label-md shadow-md flex items-center gap-1.5 transition-all disabled:opacity-50"
+                disabled={isSubmitting || isUploadingAttachments}
+                className="px-5 py-2 rounded-lg bg-btn-primary hover:bg-primary-hover text-on-primary font-label-md text-label-md shadow-md flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               >
-                <span className="material-symbols-outlined text-[18px]">send</span>
-                <span>{isSubmitting ? 'Publishing...' : 'Publish Discussion'}</span>
+                <span className="material-symbols-outlined text-[18px]">
+                  {isSubmitting ? 'progress_activity' : 'send'}
+                </span>
+                <span>{isSubmitting ? 'Publishing...' : isUploadingAttachments ? 'Uploading files...' : 'Publish Discussion'}</span>
               </button>
             </div>
           </div>

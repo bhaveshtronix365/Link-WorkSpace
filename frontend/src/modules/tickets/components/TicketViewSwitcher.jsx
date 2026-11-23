@@ -13,8 +13,12 @@ export const TicketViewSwitcher = ({
   onSeverityChange,
   statusFilter = 'all',
   onStatusChange,
+  taskFilter = 'all',
+  onTaskChange,
+  tasks = [],
   onOpenCreateModal,
   isWsConnected = false,
+  hasResolvedTickets = false,
 }) => {
   return (
     <div className="flex flex-col gap-space-md">
@@ -114,11 +118,33 @@ export const TicketViewSwitcher = ({
                 <option value="all">Status: All</option>
                 <option value="open">Open</option>
                 <option value="wip">In Progress</option>
+                <option value="passed">Passed</option>
                 <option value="on_hold">On Hold</option>
-                <option value="resolved">Resolved</option>
+                {hasResolvedTickets && (
+                  <option value="resolved">Legacy: resolved</option>
+                )}
                 <option value="closed">Closed</option>
               </select>
             </div>
+
+            {/* Task Filter Dropdown */}
+            {onTaskChange && (
+              <div className="flex-1 sm:flex-initial">
+                <select
+                  value={taskFilter}
+                  onChange={(e) => onTaskChange(e.target.value)}
+                  className="w-full sm:w-auto h-9 px-3 rounded-lg bg-canvas-main border border-border-subtle font-body-sm text-xs sm:text-body-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/20 max-w-[200px] truncate"
+                  title="Filter by related task"
+                >
+                  <option value="all">Task: All</option>
+                  {tasks.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.task_number || t.key}: {t.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       </div>

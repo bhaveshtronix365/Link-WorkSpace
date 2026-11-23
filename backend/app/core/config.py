@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_ATTACHMENT_SIZE_BYTES: int = 25 * 1024 * 1024  # 25 MB
 
+    # Ticket Attachments & Limits
+    ATTACHMENT_ALLOWED_EXTENSIONS: List[str] = [
+        ".png", ".jpg", ".jpeg", ".webp", ".gif",
+        ".pdf",
+        ".txt", ".log", ".csv", ".json",
+    ]
+    ATTACHMENT_MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB per file
+    ATTACHMENT_MAX_FILES_PER_COMMENT: int = 5               # 5 files per comment
+    ATTACHMENT_MAX_FILES_PER_TICKET: int = 50               # per-ticket file count limit
+    ATTACHMENT_RATE_LIMIT_PER_MINUTE: int = 30              # rate limit uploads per user/min
+    ATTACHMENT_UPLOAD_DIR: str = "./uploads/ticket_attachments"
+
     # Realtime / Subscriptions
     NEON_REALTIME_URL: Optional[str] = None
     NEON_REALTIME_SECRET: Optional[str] = None
@@ -51,11 +63,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
-    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @field_validator("BACKEND_CORS_ORIGINS", "ATTACHMENT_ALLOWED_EXTENSIONS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
+            return [i.strip() for i in v.split(",") if i.strip()]
         return v
 
     @field_validator("DATABASE_URL", "DATABASE_URL_POOLED", mode="before")

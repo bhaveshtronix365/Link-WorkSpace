@@ -23,6 +23,7 @@ export const AllTasksPage = () => {
   const urlStatus = searchParams.get('status') || '';
   const urlPriority = searchParams.get('priority') || '';
   const urlSearch = searchParams.get('search') || '';
+  const [drawerTab, setDrawerTab] = useState('discussion');
 
   const {
     tasks,
@@ -52,6 +53,17 @@ export const AllTasksPage = () => {
       updateFilter('status', st);
     }
   }, [searchParams]);
+
+  // Sync task_id from URL if linking directly to a task
+  useEffect(() => {
+    const urlTaskId = searchParams.get('task_id');
+    if (urlTaskId && tasks.length > 0) {
+      const found = tasks.find((t) => t.id === urlTaskId);
+      if (found) {
+        setSelectedTask(found);
+      }
+    }
+  }, [searchParams, tasks]);
 
   const handleStatusFilterChange = (val) => {
     updateFilter('status', val);
@@ -231,7 +243,10 @@ export const AllTasksPage = () => {
               <TaskRow
                 key={task.id}
                 task={task}
-                onSelectTask={(t) => setSelectedTask(t)}
+                onSelectTask={(t, tab = 'discussion') => {
+                  setDrawerTab(tab);
+                  setSelectedTask(t);
+                }}
                 onStatusChange={(taskId, newStatus) => changeStatus(taskId, newStatus)}
                 onUpdateTask={(taskId, updates) => updateTask(taskId, updates)}
               />
@@ -245,6 +260,7 @@ export const AllTasksPage = () => {
         isOpen={Boolean(selectedTask)}
         onClose={() => setSelectedTask(null)}
         task={selectedTask}
+        initialTab={drawerTab}
         onUpdateTask={(taskId, updates) => updateTask(taskId, updates)}
         onDeleteTask={(taskId) => deleteTask(taskId)}
       />

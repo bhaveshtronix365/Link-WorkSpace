@@ -11,6 +11,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models import Task, Ticket, Project, User
+from backend.app.enums import OPEN_TICKET_STATUSES
 
 
 async def get_my_tasks_count(
@@ -185,11 +186,12 @@ async def get_open_tickets_count(
 ) -> int:
     """
     Unified definition of 'Open Tickets':
-    Total number of tickets within the organization's projects with status 'open'.
+    Total number of active, non-terminal tickets (status in OPEN_TICKET_STATUSES)
+    within the organization's projects.
     """
     conditions = [
         Project.organization_id == organization_id,
-        func.lower(Ticket.status) == "open",
+        func.lower(Ticket.status).in_(OPEN_TICKET_STATUSES),
     ]
     if project_id and project_id.lower() != "all":
         conditions.append(Ticket.project_id == project_id)

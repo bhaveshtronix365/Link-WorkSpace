@@ -55,7 +55,17 @@ export const ticketsService = {
     return res.data;
   },
 
-  addAttachment: async (ticketId, fileOrFormData) => {
+  getAttachments: async (ticketId) => {
+    const res = await apiClient.get(`/tickets/${ticketId}/attachments`);
+    return res.data;
+  },
+
+  getHandoffs: async (ticketId) => {
+    const res = await apiClient.get(`/tickets/${ticketId}/handoffs`);
+    return res.data;
+  },
+
+  addAttachment: async (ticketId, fileOrFormData, onUploadProgress) => {
     let payload = fileOrFormData;
     let headers = {};
     if (fileOrFormData instanceof File) {
@@ -67,7 +77,38 @@ export const ticketsService = {
       payload = fileOrFormData;
       headers = { 'Content-Type': 'multipart/form-data' };
     }
-    const res = await apiClient.post(`/tickets/${ticketId}/attachments`, payload, { headers });
+    const res = await apiClient.post(`/tickets/${ticketId}/attachments`, payload, {
+      headers,
+      onUploadProgress,
+    });
+    return res.data;
+  },
+
+  getAttachmentPreviewBlob: async (ticketId, attachmentId) => {
+    const res = await apiClient.get(`/tickets/${ticketId}/attachments/${attachmentId}/preview`, {
+      responseType: 'blob',
+    });
+    return res.data;
+  },
+
+  downloadAttachment: async (ticketId, attachmentId, fileName = 'attachment') => {
+    const res = await apiClient.get(`/tickets/${ticketId}/attachments/${attachmentId}/download`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], { type: res.headers?.['content-type'] || 'application/octet-stream' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    return true;
+  },
+
+  deleteAttachment: async (ticketId, attachmentId) => {
+    const res = await apiClient.delete(`/tickets/${ticketId}/attachments/${attachmentId}`);
     return res.data;
   },
 
@@ -98,6 +139,31 @@ export const ticketsService = {
 
   closeTicket: async (ticketId, data) => {
     const res = await apiClient.post(`/tickets/${ticketId}/close`, data);
+    return res.data;
+  },
+
+  acceptTicket: async (ticketId, data = {}) => {
+    const res = await apiClient.post(`/tickets/${ticketId}/accept`, data);
+    return res.data;
+  },
+
+  passTicket: async (ticketId, data) => {
+    const res = await apiClient.post(`/tickets/${ticketId}/pass`, data);
+    return res.data;
+  },
+
+  holdTicket: async (ticketId, data) => {
+    const res = await apiClient.post(`/tickets/${ticketId}/hold`, data);
+    return res.data;
+  },
+
+  resumeTicket: async (ticketId, data = {}) => {
+    const res = await apiClient.post(`/tickets/${ticketId}/resume`, data);
+    return res.data;
+  },
+
+  reassignTicketByOwner: async (ticketId, data) => {
+    const res = await apiClient.post(`/tickets/${ticketId}/reassign`, data);
     return res.data;
   },
 

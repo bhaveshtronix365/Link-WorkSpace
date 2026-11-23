@@ -3,7 +3,8 @@
  * Ensures strict lowercase enum compliance across the frontend.
  */
 
-export const TICKET_STATUSES = ['open', 'wip', 'on_hold', 'resolved', 'closed'];
+export const TICKET_STATUSES = ['open', 'wip', 'passed', 'on_hold', 'closed'];
+export const LEGACY_TICKET_STATUSES = ['resolved'];
 
 export const TICKET_SEVERITIES = ['blocker', 'critical', 'major', 'minor'];
 
@@ -100,9 +101,18 @@ export const STATUS_CONFIG = {
     badge: 'bg-status-on-hold/15 text-status-on-hold',
     icon: 'pause_circle',
   },
+  passed: {
+    key: 'passed',
+    label: 'Passed',
+    bg: 'bg-purple-500/15',
+    text: 'text-purple-600 dark:text-purple-400',
+    dot: 'bg-purple-500',
+    badge: 'bg-purple-500/15 text-purple-600 dark:text-purple-400',
+    icon: 'forward',
+  },
   resolved: {
     key: 'resolved',
-    label: 'Resolved',
+    label: 'Legacy: resolved',
     bg: 'bg-status-resolved/10',
     text: 'text-status-resolved',
     dot: 'bg-status-resolved',

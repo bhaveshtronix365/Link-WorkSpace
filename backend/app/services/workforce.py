@@ -55,7 +55,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.enums import PresenceStatus, AccountState
+from backend.app.enums import PresenceStatus, AccountState, OPEN_TICKET_STATUSES
 from backend.app.models import User, Membership, Project, Task, Ticket, UserInvitation
 from backend.app.core.websockets import ws_manager
 
@@ -277,7 +277,7 @@ async def get_organization_workforce_data(
         .join(Project, Ticket.project_id == Project.id)
         .where(
             Project.organization_id == organization_id,
-            Ticket.status.notin_(["closed", "resolved"]),
+            func.lower(Ticket.status).in_(OPEN_TICKET_STATUSES),
             Ticket.assignee_id.isnot(None),
         )
     )

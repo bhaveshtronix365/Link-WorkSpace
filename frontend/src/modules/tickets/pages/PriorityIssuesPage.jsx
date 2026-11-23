@@ -3,9 +3,7 @@ import { ticketsService, createTicketsWebSocket } from '../../../services/ticket
 import { projectsService } from '../../../services/projectsService';
 import { authService } from '../../../services/api';
 import EditTicketModal from '../components/EditTicketModal';
-import StatusChangeModal from '../components/StatusChangeModal';
 import SeverityChangeModal from '../components/SeverityChangeModal';
-import ReassignTicketModal from '../components/ReassignTicketModal';
 import ChangeDeadlineModal from '../components/ChangeDeadlineModal';
 import ReopenTicketModal from '../components/ReopenTicketModal';
 import CloseTicketModal from '../components/CloseTicketModal';
@@ -441,10 +439,11 @@ export const PriorityIssuesPage = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => openModal('status', ticket)}
+                      onClick={() => navigate(`/workspace/tickets/${ticket.id}`)}
                       className="h-8 px-2.5 bg-canvas-main hover:bg-surface-container rounded font-label-sm text-label-sm text-text-secondary"
+                      title="Manage ticket lifecycle on detail page"
                     >
-                      Status
+                      Lifecycle
                     </button>
                     <button
                       type="button"
@@ -452,13 +451,6 @@ export const PriorityIssuesPage = () => {
                       className="h-8 px-2.5 bg-canvas-main hover:bg-surface-container rounded font-label-sm text-label-sm text-text-secondary"
                     >
                       Severity
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openModal('reassign', ticket)}
-                      className="h-8 px-2.5 bg-canvas-main hover:bg-surface-container rounded font-label-sm text-label-sm text-text-secondary"
-                    >
-                      Reassign
                     </button>
                     <button
                       type="button"
@@ -573,10 +565,11 @@ export const PriorityIssuesPage = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => openModal('status', ticket)}
+                      onClick={() => navigate(`/workspace/tickets/${ticket.id}`)}
                       className="h-8 px-2.5 bg-canvas-main hover:bg-surface-container rounded font-label-sm text-label-sm text-text-secondary"
+                      title="Manage ticket lifecycle on detail page"
                     >
-                      Status
+                      Lifecycle
                     </button>
                     <button
                       type="button"
@@ -584,13 +577,6 @@ export const PriorityIssuesPage = () => {
                       className="h-8 px-2.5 bg-canvas-main hover:bg-surface-container rounded font-label-sm text-label-sm text-text-secondary"
                     >
                       Severity
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openModal('reassign', ticket)}
-                      className="h-8 px-2.5 bg-canvas-main hover:bg-surface-container rounded font-label-sm text-label-sm text-text-secondary"
-                    >
-                      Reassign
                     </button>
                     <button
                       type="button"
@@ -631,20 +617,8 @@ export const PriorityIssuesPage = () => {
         ticket={modalTicket}
         onUpdated={onTicketUpdated}
       />
-      <StatusChangeModal
-        isOpen={activeModal === 'status'}
-        onClose={closeModal}
-        ticket={modalTicket}
-        onUpdated={onTicketUpdated}
-      />
       <SeverityChangeModal
         isOpen={activeModal === 'severity'}
-        onClose={closeModal}
-        ticket={modalTicket}
-        onUpdated={onTicketUpdated}
-      />
-      <ReassignTicketModal
-        isOpen={activeModal === 'reassign'}
         onClose={closeModal}
         ticket={modalTicket}
         onUpdated={onTicketUpdated}

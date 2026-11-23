@@ -13,7 +13,7 @@ import NotificationDetailModal from './NotificationDetailModal';
 import useNotifications from '../hooks/useNotifications';
 
 export const NotificationDropdown = ({ isOpen, onClose, triggerRef: triggerRefProp }) => {
-  const { notifications, unreadCount, loading, markRead, markAllRead } = useNotifications();
+  const { notifications, unreadCount, loading, error, fetchNotifications, markRead, markAllRead } = useNotifications();
   const dropdownRef = useRef(null);
   const triggerRef = useRef(null);
   const [positionStyle, setPositionStyle] = useState({ top: 68, right: 24 });
@@ -156,7 +156,22 @@ export const NotificationDropdown = ({ isOpen, onClose, triggerRef: triggerRefPr
                 </div>
               )}
 
-              {!loading && !hasNotifications && (
+              {error && !loading && (
+                <div className="flex flex-col items-center justify-center py-10 gap-3 text-center px-4">
+                  <span className="material-symbols-outlined text-[36px] text-severity-blocker">error_outline</span>
+                  <p className="font-label-md text-label-md text-text-primary">Failed to load notifications</p>
+                  <button
+                    onClick={() => fetchNotifications()}
+                    type="button"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm hover:bg-primary/90 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">refresh</span>
+                    <span>Retry</span>
+                  </button>
+                </div>
+              )}
+
+              {!loading && !error && !hasNotifications && (
                 <div className="flex flex-col items-center justify-center py-12 gap-3 text-text-muted">
                   <span className="material-symbols-outlined text-[40px]">notifications_none</span>
                   <p className="font-label-md text-label-md">You're all caught up!</p>
@@ -166,7 +181,7 @@ export const NotificationDropdown = ({ isOpen, onClose, triggerRef: triggerRefPr
                 </div>
               )}
 
-              {!loading && preview.map((notif) => (
+              {!loading && !error && preview.map((notif) => (
                 <NotificationItem
                   key={notif.id}
                   notification={notif}

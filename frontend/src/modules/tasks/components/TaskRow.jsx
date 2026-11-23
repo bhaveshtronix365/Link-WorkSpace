@@ -93,6 +93,25 @@ export const TaskRow = ({
             </div>
           )}
 
+          {/* Open Tickets Chip */}
+          {(task.open_tickets_count > 0 || task.tickets_count > 0) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectTask?.(task, 'tickets');
+              }}
+              title={`${task.open_tickets_count ?? task.tickets_count} open ticket(s) - click to open Tickets tab`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-canvas-lavender hover:bg-primary-fixed text-primary border border-border-subtle hover:border-primary transition-all cursor-pointer shadow-2xs"
+            >
+              <span className="material-symbols-outlined text-[13px]">confirmation_number</span>
+              <span>{task.open_tickets_count ?? task.tickets_count}</span>
+              <span className="hidden xl:inline text-[10px] font-normal text-text-muted">
+                {(task.open_tickets_count ?? task.tickets_count) === 1 ? 'ticket' : 'tickets'}
+              </span>
+            </button>
+          )}
+
           {/* Story Points */}
           {task.story_points != null && (
             <span className="hidden md:inline px-2 py-0.5 rounded bg-surface-container font-mono text-[11px] font-bold text-text-secondary">

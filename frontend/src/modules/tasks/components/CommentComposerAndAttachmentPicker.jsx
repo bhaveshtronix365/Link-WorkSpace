@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { taskService } from '../services/taskService';
+import Avatar from '../../../components/common/Avatar';
+import Modal from '../../../components/common/Modal';
 
 /**
  * Format bytes into human-readable size
@@ -38,6 +40,10 @@ export const CommentComposerAndAttachmentPicker = ({
   taskId,
   onCommentAdded,
   onAttachmentAdded,
+  onAttachmentDeleted,
+  currentTab,
+  hideTabBar = false,
+  onCountsChange,
 }) => {
   const [commentBody, setCommentBody] = useState('');
   const [comments, setComments] = useState([]);
@@ -46,9 +52,28 @@ export const CommentComposerAndAttachmentPicker = ({
   const [isPosting, setIsPosting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [activeTab, setActiveTab] = useState('comments'); // 'comments' | 'attachments'
+  const [internalTab, setInternalTab] = useState('comments'); // 'comments' | 'attachments'
+  const [deletingAttachment, setDeletingAttachment] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const activeTab = currentTab || internalTab;
 
   const fileInputRef = useRef(null);
+
+  const getAuthorName = (c) => {
+    if (c.author?.display_name) return c.author.display_name;
+    if (c.author?.full_name) return c.author.full_name;
+    if (c.author_name) return c.author_name;
+    return 'Deleted user';
+  };
+
+  const getAuthorRole = (c) => {
+    return c.author?.role || c.author_role || null;
+  };
+
+  const getAuthorAvatar = (c) => {
+    return c.author?.avatar_url || c.author_avatar || null;
+  };
 
   // Load comments and attachments strictly from API
   useEffect(() => {
@@ -63,8 +88,11 @@ export const CommentComposerAndAttachmentPicker = ({
     ])
       .then(([loadedComments, loadedAttachments]) => {
         if (isMounted) {
-          setComments(loadedComments || []);
-          setAttachments(loadedAttachments || []);
+          const coms = loadedComments || [];
+          const atts = loadedAttachments || [];
+          setComments(coms);
+          setAttachments(atts);
+          onCountsChange?.({ commentsCount: coms.length, attachmentsCount: atts.length });
         }
       })
       .finally(() => {
@@ -134,40 +162,61 @@ export const CommentComposerAndAttachmentPicker = ({
     }
   };
 
+  const handleDeleteAttachment = async () => {
+    if (!deletingAttachment) return;
+    setIsDeleting(true);
+    try {
+      await taskService.deleteAttachment(taskId, deletingAttachment.id);
+      setAttachments((prev) => {
+        const next = prev.filter((a) => a.id !== deletingAttachment.id);
+        onCountsChange?.({ commentsCount: comments.length, attachmentsCount: next.length });
+        return next;
+      });
+      if (onAttachmentDeleted) onAttachmentDeleted(deletingAttachment);
+      setDeletingAttachment(null);
+    } catch (err) {
+      console.error('Failed to delete attachment', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Sub-Tabs: Comments vs Attachments */}
-      <div className="flex items-center justify-between border-b border-border-subtle pb-2">
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setActiveTab('comments')}
-            className={`font-label-md text-label-md flex items-center gap-1.5 transition-colors pb-1 ${
-              activeTab === 'comments'
-                ? 'text-primary border-b-2 border-primary font-bold'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">forum</span>
-            <span>Discussion ({comments.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('attachments')}
-            className={`font-label-md text-label-md flex items-center gap-1.5 transition-colors pb-1 ${
-              activeTab === 'attachments'
-                ? 'text-primary border-b-2 border-primary font-bold'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">attach_file</span>
-            <span>Files ({attachments.length})</span>
-          </button>
+      {/* Sub-Tabs: Comments vs Attachments (shown only when drawer does not manage tabs) */}
+      {!hideTabBar && (
+        <div className="flex items-center justify-between border-b border-border-subtle pb-2">
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setInternalTab('comments')}
+              className={`font-label-md text-label-md flex items-center gap-1.5 transition-colors pb-1 ${
+                activeTab === 'comments' || activeTab === 'discussion'
+                  ? 'text-primary border-b-2 border-primary font-bold'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">forum</span>
+              <span>Discussion ({comments.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setInternalTab('attachments')}
+              className={`font-label-md text-label-md flex items-center gap-1.5 transition-colors pb-1 ${
+                activeTab === 'attachments' || activeTab === 'files'
+                  ? 'text-primary border-b-2 border-primary font-bold'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">attach_file</span>
+              <span>Files ({attachments.length})</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* COMMENTS TAB */}
-      {activeTab === 'comments' && (
+      {/* COMMENTS / DISCUSSION TAB */}
+      {(activeTab === 'comments' || activeTab === 'discussion') && (
         <div className="space-y-4">
           {/* Comment Composer */}
           <div className="bg-surface-card rounded-xl border border-border-subtle shadow-xs overflow-hidden focus-within:ring-2 focus-within:ring-primary/20">
@@ -249,35 +298,52 @@ export const CommentComposerAndAttachmentPicker = ({
               </div>
             )}
 
-            {!isLoading && comments.map((c) => (
-              <div
-                key={c.id}
-                className="p-3 rounded-xl bg-surface-card border border-border-subtle space-y-1.5"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-primary-fixed text-primary font-bold text-xs flex items-center justify-center">
-                      U
+            {!isLoading && comments.map((c) => {
+              const authorName = getAuthorName(c);
+              const authorRole = getAuthorRole(c);
+              const authorAvatar = getAuthorAvatar(c);
+
+              return (
+                <div
+                  key={c.id}
+                  className="p-3.5 rounded-xl bg-surface-card border border-border-subtle space-y-2 shadow-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Avatar
+                        src={authorAvatar}
+                        name={authorName}
+                        size="xs"
+                        shape="rounded-full"
+                      />
+                      <span className="font-label-md text-label-md text-text-primary">
+                        {authorName}
+                      </span>
+                      {authorRole && (
+                        <span className="px-1.5 py-0.5 rounded bg-canvas-lavender text-text-secondary text-[10px] font-semibold uppercase tracking-wider">
+                          {authorRole}
+                        </span>
+                      )}
                     </div>
-                    <span className="font-label-md text-label-md text-text-primary">
-                      {c.author_id === 'usr_01' ? 'Current User' : c.author_id}
+                    <span
+                      className="font-label-sm text-label-sm text-text-muted"
+                      title={c.created_at ? new Date(c.created_at).toLocaleString() : ''}
+                    >
+                      {formatTimestamp(c.created_at)}
                     </span>
                   </div>
-                  <span className="font-label-sm text-label-sm text-text-muted">
-                    {formatTimestamp(c.created_at)}
-                  </span>
+                  <p className="font-body-sm text-body-sm text-text-primary whitespace-pre-wrap pl-8">
+                    {c.body}
+                  </p>
                 </div>
-                <p className="font-body-sm text-body-sm text-text-primary whitespace-pre-wrap pl-8">
-                  {c.body}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* ATTACHMENTS TAB */}
-      {activeTab === 'attachments' && (
+      {/* ATTACHMENTS / FILES TAB */}
+      {(activeTab === 'attachments' || activeTab === 'files') && (
         <div className="space-y-4">
           {/* Dropzone */}
           <div
@@ -341,20 +407,64 @@ export const CommentComposerAndAttachmentPicker = ({
                   </div>
                 </div>
 
-                <a
-                  href={att.file_url || `/api/v1/files/${att.id}/download`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download={att.filename || 'attachment'}
-                  className="w-8 h-8 rounded-lg hover:bg-canvas-lavender text-text-muted hover:text-text-primary flex items-center justify-center transition-colors flex-shrink-0"
-                  title="Download"
-                >
-                  <span className="material-symbols-outlined text-[18px]">download</span>
-                </a>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <a
+                    href={att.file_url || `/api/v1/files/${att.id}/download`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={att.filename || 'attachment'}
+                    className="w-8 h-8 rounded-lg hover:bg-canvas-lavender text-text-muted hover:text-text-primary flex items-center justify-center transition-colors"
+                    title="Download"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">download</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingAttachment(att)}
+                    className="w-8 h-8 rounded-lg hover:bg-error-container/40 text-text-muted hover:text-error flex items-center justify-center transition-colors"
+                    title="Delete attachment"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {/* Delete Attachment Confirmation Modal */}
+      {deletingAttachment && (
+        <Modal
+          isOpen={Boolean(deletingAttachment)}
+          onClose={() => setDeletingAttachment(null)}
+          title="Delete Attachment"
+          subtitle={`Are you sure you want to delete "${deletingAttachment.filename}"? This action cannot be undone.`}
+          size="sm"
+          footer={
+            <div className="flex items-center justify-end gap-2 w-full">
+              <button
+                type="button"
+                onClick={() => setDeletingAttachment(null)}
+                className="px-4 py-2 rounded-xl border border-border-subtle text-text-secondary hover:bg-canvas-lavender font-label-md"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAttachment}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl bg-error hover:bg-error/90 text-white font-label-md flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          }
+        >
+          <p className="text-body-sm text-text-secondary">
+            File: <strong className="text-text-primary">{deletingAttachment.filename}</strong> ({formatBytes(deletingAttachment.file_size)})
+          </p>
+        </Modal>
       )}
     </div>
   );

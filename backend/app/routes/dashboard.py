@@ -36,6 +36,7 @@ from reportlab.pdfgen import canvas
 from backend.app.database import get_db
 from backend.app.dependencies import get_current_active_user
 from backend.app.models import Project, Task, Ticket, ProjectActivity, User, Organization, Membership
+from backend.app.enums import OPEN_TICKET_STATUSES
 from backend.app.services.sla import is_active_sla_breach
 from backend.app.services.metrics import (
     get_my_tasks_count,
@@ -496,7 +497,7 @@ async def get_tickets_severity(
         .join(Ticket.project)
         .where(
             Project.organization_id == org_id,
-            Ticket.status.notin_(["resolved", "closed"]),
+            func.lower(Ticket.status).in_(OPEN_TICKET_STATUSES),
         )
     )
     if eff_project_id:
@@ -815,7 +816,7 @@ async def get_priority_tickets(
         .join(Ticket.project)
         .where(
             Project.organization_id == org_id,
-            Ticket.status.notin_(["resolved", "closed"]),
+            func.lower(Ticket.status).in_(OPEN_TICKET_STATUSES),
             Ticket.severity.in_(["blocker", "critical", "major"]),
         )
     )

@@ -160,9 +160,9 @@ export const NotificationItem = ({
           </p>
         )}
 
-        {notification.target_id && (
+        {(notification.target_label || (notification.target_id && !notification.target_id.startsWith('usr_') && notification.target_type !== 'user')) && (
           <span className="inline-flex items-center mt-1.5 font-mono text-[11px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-medium">
-            {notification.target_id}
+            {notification.target_label || notification.target_id}
           </span>
         )}
       </div>

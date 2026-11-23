@@ -35,7 +35,7 @@ export const NotificationCenterPage = () => {
 
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedNotification, setSelectedNotification] = useState(null);
-  const { notifications, unreadCount, loading, markRead, markAllRead } = useNotifications({
+  const { notifications, unreadCount, loading, error, fetchNotifications, markRead, markAllRead } = useNotifications({
     inboxOnly: isInbox,
   });
 
@@ -121,7 +121,27 @@ export const NotificationCenterPage = () => {
           </div>
         )}
 
-        {!loading && filtered.length === 0 && (
+        {error && !loading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-4 text-center px-4">
+            <span className="material-symbols-outlined text-[48px] text-severity-blocker">error_outline</span>
+            <div>
+              <p className="font-label-md text-label-md text-text-primary">Failed to load notifications</p>
+              <p className="font-body-sm text-body-sm text-text-secondary mt-1">
+                There was a problem loading your notification stream. Please try again.
+              </p>
+            </div>
+            <button
+              onClick={() => fetchNotifications()}
+              type="button"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary font-label-md text-label-md hover:bg-primary/90 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">refresh</span>
+              <span>Retry</span>
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 gap-4 text-text-muted">
             <span className="material-symbols-outlined text-[48px]">
               {isInbox ? 'inbox' : 'notifications_none'}

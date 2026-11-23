@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { ticketsService } from '../../../services/ticketsService';
 import { projectsService } from '../../../services/projectsService';
+import RelatedTaskSelect from './RelatedTaskSelect';
 
 export const EditTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     project_id: '',
+    task_id: '',
     assignee_id: '',
     deadline: '',
   });
@@ -23,6 +25,7 @@ export const EditTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
         title: ticket.title || '',
         description: ticket.description || '',
         project_id: ticket.project_id || '',
+        task_id: ticket.task_id || ticket.task?.id || '',
         assignee_id: ticket.assignee_id || '',
         deadline: ticket.deadline ? ticket.deadline.slice(0, 16) : '',
       });
@@ -88,6 +91,7 @@ export const EditTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
         title: formData.title.trim(),
         description: formData.description,
         project_id: formData.project_id || ticket.project_id,
+        task_id: formData.task_id ? formData.task_id : null,
         assignee_id: formData.assignee_id || null,
         deadline: formData.deadline ? new Date(formData.deadline).toISOString() : null,
       };
@@ -292,6 +296,16 @@ export const EditTicketModal = ({ isOpen, onClose, ticket, onUpdated }) => {
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Related Task */}
+          <div className="space-y-1.5">
+            <label className="font-label-md text-label-md text-text-primary">Related Task</label>
+            <RelatedTaskSelect
+              projectId={formData.project_id || ticket.project_id}
+              selectedTaskId={formData.task_id}
+              onChange={(newId) => setFormData((prev) => ({ ...prev, task_id: newId }))}
+            />
           </div>
 
           {/* Resolution Deadline */}

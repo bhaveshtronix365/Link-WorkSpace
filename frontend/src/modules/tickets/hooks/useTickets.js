@@ -15,12 +15,14 @@ export const useTickets = ({
   initialSeverity = 'all',
   initialStatus = 'all',
   initialSla = 'all',
+  initialTaskId = 'all',
   autoConnectWs = true,
 } = {}) => {
   const [search, setSearch] = useState(initialSearch);
   const [severityFilter, setSeverityFilter] = useState(initialSeverity);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [slaFilter, setSlaFilter] = useState(initialSla);
+  const [taskFilter, setTaskFilter] = useState(initialTaskId);
 
   const [tickets, setTickets] = useState([]);
   const [stats, setStats] = useState(null);
@@ -47,6 +49,7 @@ export const useTickets = ({
       if (severityFilter !== 'all') params.severity = severityFilter.toLowerCase();
       if (statusFilter !== 'all') params.status = statusFilter.toLowerCase();
       if (slaFilter !== 'all') params.sla = slaFilter.toLowerCase();
+      if (taskFilter && taskFilter !== 'all') params.task_id = taskFilter;
 
       const [statsData, ticketsData] = await Promise.all([
         ticketsService.getStats().catch((err) => {
@@ -66,12 +69,13 @@ export const useTickets = ({
         const total = items.length;
         const open = items.filter((t) => (t.status || '').toLowerCase() === 'open').length;
         const wip = items.filter((t) => ['wip', 'in_progress'].includes((t.status || '').toLowerCase())).length;
+        const passed = items.filter((t) => (t.status || '').toLowerCase() === 'passed').length;
         const on_hold = items.filter((t) => (t.status || '').toLowerCase() === 'on_hold').length;
         const resolved = items.filter((t) => (t.status || '').toLowerCase() === 'resolved').length;
         const closed = items.filter((t) => (t.status || '').toLowerCase() === 'closed').length;
         const sla_breached = items.filter((t) => t.is_breached).length;
 
-        setStats({ total, open, wip, on_hold, resolved, closed, sla_breached });
+        setStats({ total, open, wip, passed, on_hold, resolved, closed, sla_breached });
       }
     } catch (err) {
       console.error('Failed to load tickets data:', err);
@@ -81,7 +85,7 @@ export const useTickets = ({
       setLoading(false);
       setIsRetrying(false);
     }
-  }, [search, severityFilter, statusFilter, slaFilter]);
+  }, [search, severityFilter, statusFilter, slaFilter, taskFilter]);
 
   useEffect(() => {
     fetchTicketsData();
@@ -120,6 +124,7 @@ export const useTickets = ({
                 'ticket_severity_changed',
                 'ticket_deleted',
                 'ticket_comment_added',
+                'ticket_handoff',
               ].includes(eventType)
             ) {
               fetchTicketsData();
@@ -151,22 +156,33 @@ export const useTickets = ({
     };
   }, [autoConnectWs, fetchTicketsData]);
 
+  const hasResolvedTickets = useMemo(() => {
+    return (stats?.resolved ?? 0) > 0 || tickets.some((t) => (t.status || '').toLowerCase() === 'resolved');
+  }, [stats, tickets]);
+
   // Group tickets by status for Board View (using lowercase enum values)
   const boardTickets = useMemo(() => {
     const groups = {};
     for (const st of TICKET_STATUSES) {
       groups[st] = [];
     }
+    if (hasResolvedTickets) {
+      groups.resolved = [];
+    }
     for (const t of tickets) {
       const st = (t.status || '').toLowerCase();
-      if (groups[st]) {
+      if (st === 'in_progress') {
+        groups.wip.push(t);
+      } else if (groups[st]) {
         groups[st].push(t);
+      } else if (st === 'resolved' && groups.resolved) {
+        groups.resolved.push(t);
       } else {
         groups.open.push(t);
       }
     }
     return groups;
-  }, [tickets]);
+  }, [tickets, hasResolvedTickets]);
 
   // Group tickets by severity for Priority View (using lowercase enum values)
   const priorityTickets = useMemo(() => {
@@ -185,42 +201,82 @@ export const useTickets = ({
     return groups;
   }, [tickets]);
 
-  // Optimistic status update with automatic rollback on error
+  // Lifecycle-compliant status update for Board drag-and-drop actions
   const updateTicketStatus = useCallback(async (ticketId, targetStatus) => {
     const normalizedTarget = (targetStatus || '').toLowerCase();
-    if (!TICKET_STATUSES.includes(normalizedTarget)) {
-      setActionError(`Invalid status: ${targetStatus}`);
+    const t = tickets.find((item) => item.id === ticketId);
+    if (!t) return false;
+    const currentStatus = (t.status || '').toLowerCase();
+
+    if (normalizedTarget === currentStatus) return false;
+
+    // Direct transition to resolved is strictly forbidden
+    if (normalizedTarget === 'resolved') {
+      setActionError("The 'resolved' status is no longer reachable. Tickets must follow the verified lifecycle.");
       return false;
     }
 
-    let previousTickets = null;
-    setTickets((prev) => {
-      previousTickets = prev;
-      return prev.map((t) => (t.id === ticketId ? { ...t, status: normalizedTarget } : t));
-    });
-    setActionError(null);
+    // Direct transition to passed requires modal with message & recipient
+    if (normalizedTarget === 'passed') {
+      setActionError("Passing a ticket to a colleague requires a handoff message. Open the ticket to pass it.");
+      return false;
+    }
 
-    try {
-      await ticketsService.updateTicket(ticketId, { status: normalizedTarget });
-      return true;
-    } catch (err) {
-      console.error('Failed to update ticket status:', err);
-      // Revert optimistic update
-      if (previousTickets) {
-        setTickets(previousTickets);
+    // Direct transition to on_hold requires a reason
+    if (normalizedTarget === 'on_hold') {
+      setActionError("Placing a ticket on hold requires a reason. Open the ticket to set it on hold.");
+      return false;
+    }
+
+    // Direct transition to closed requires owner verification
+    if (normalizedTarget === 'closed') {
+      setActionError("Closing a ticket requires owner verification. Open the ticket to verify & close.");
+      return false;
+    }
+
+    // Direct transition to open is forbidden if in progress, or requires owner reopen
+    if (normalizedTarget === 'open') {
+      if (['wip', 'in_progress'].includes(currentStatus)) {
+        setActionError("Tickets in progress cannot be moved back to open. Pass it on with a message instead.");
+      } else {
+        setActionError("Reopening a ticket requires owner authorization and a message. Open the ticket to reopen.");
       }
-      const errMsg =
-        err.response?.data?.detail || err.message || 'Failed to update ticket status. Changes reverted.';
-      setActionError(errMsg);
       return false;
     }
-  }, []);
+
+    // Moving to in_progress / wip:
+    // If open -> accept ticket
+    // If on_hold or passed -> resume ticket
+    if (['wip', 'in_progress'].includes(normalizedTarget)) {
+      try {
+        if (currentStatus === 'open') {
+          await ticketsService.acceptTicket(ticketId);
+        } else if (['on_hold', 'passed'].includes(currentStatus)) {
+          await ticketsService.resumeTicket(ticketId);
+        } else {
+          setActionError(`Cannot transition ticket from ${currentStatus} to ${normalizedTarget}.`);
+          return false;
+        }
+        await fetchTicketsData();
+        return true;
+      } catch (err) {
+        console.error('Failed to update ticket status:', err);
+        const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || err.message || 'Failed to update ticket status.';
+        setActionError(errMsg);
+        return false;
+      }
+    }
+
+    setActionError(`Unsupported transition to ${targetStatus}.`);
+    return false;
+  }, [tickets, fetchTicketsData]);
 
   const resetFilters = useCallback(() => {
     setSearch('');
     setSeverityFilter('all');
     setStatusFilter('all');
     setSlaFilter('all');
+    setTaskFilter('all');
   }, []);
 
   return {
@@ -242,6 +298,9 @@ export const useTickets = ({
     setStatusFilter,
     slaFilter,
     setSlaFilter,
+    taskFilter,
+    setTaskFilter,
+    hasResolvedTickets,
     updateTicketStatus,
     fetchTicketsData,
     refetch: fetchTicketsData,

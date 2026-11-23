@@ -28,6 +28,7 @@ export const MyTasksPage = () => {
 
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'todo' | 'in_progress' | 'done'
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState('discussion');
 
   // Dynamic statistics from verified backend totals, falling back to loaded tasks
   const stats = useMemo(() => {
@@ -225,7 +226,10 @@ export const MyTasksPage = () => {
               <TaskRow
                 key={task.id}
                 task={task}
-                onSelectTask={(t) => setSelectedTask(t)}
+                onSelectTask={(t, tab = 'discussion') => {
+                  setDrawerTab(tab);
+                  setSelectedTask(t);
+                }}
                 onStatusChange={(taskId, newStatus) => changeStatus(taskId, newStatus)}
                 onUpdateTask={(taskId, updates) => updateTask(taskId, updates)}
               />
@@ -239,6 +243,7 @@ export const MyTasksPage = () => {
         isOpen={Boolean(selectedTask)}
         onClose={() => setSelectedTask(null)}
         task={selectedTask}
+        initialTab={drawerTab}
         onUpdateTask={(taskId, updates) => updateTask(taskId, updates)}
         onDeleteTask={(taskId) => deleteTask(taskId)}
       />

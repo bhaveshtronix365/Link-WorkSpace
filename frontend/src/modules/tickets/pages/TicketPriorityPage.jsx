@@ -27,6 +27,7 @@ export const TicketPriorityPage = () => {
     setSeverityFilter,
     statusFilter,
     setStatusFilter,
+    hasResolvedTickets,
     refetch,
     resetFilters,
   } = useTickets();
@@ -67,6 +68,7 @@ export const TicketPriorityPage = () => {
           onStatusChange={setStatusFilter}
           onOpenCreateModal={() => setIsCreateModalOpen(true)}
           isWsConnected={isWsConnected}
+          hasResolvedTickets={hasResolvedTickets}
         />
 
         {/* Operational Filter & Control Bar */}
@@ -297,7 +299,11 @@ export const TicketPriorityPage = () => {
 
                                   {/* Status Pill */}
                                   <span className={`px-2.5 py-0.5 rounded-full ${statusBadge.bg} ${statusBadge.text} font-label-sm text-label-sm font-semibold`}>
-                                    {statusBadge.label}
+                                    {statusKey === 'passed'
+                                      ? (ticket.assignee?.full_name ? `Passed to ${ticket.assignee.full_name}` : 'Passed')
+                                      : statusKey === 'resolved'
+                                      ? 'Legacy: resolved'
+                                      : statusBadge.label}
                                   </span>
 
                                   {/* Breached Indicator */}

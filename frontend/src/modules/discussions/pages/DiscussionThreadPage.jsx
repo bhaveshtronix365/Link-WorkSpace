@@ -3,6 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { discussionsService } from '../../../services/discussionsService';
 import { DEFAULT_USER } from '../../../services/api';
 import Avatar from '../../../components/common/Avatar';
+import DiscussionAttachmentPicker from '../components/DiscussionAttachmentPicker';
+import DiscussionAttachmentList from '../components/DiscussionAttachmentList';
 
 export const DiscussionThreadPage = () => {
   const { id } = useParams();
@@ -11,6 +13,9 @@ export const DiscussionThreadPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [replyText, setReplyText] = useState('');
+  const [replyAttachmentIds, setReplyAttachmentIds] = useState([]);
+  const [isUploadingReplyAttachments, setIsUploadingReplyAttachments] = useState(false);
+  const [attachmentPickerKey, setAttachmentPickerKey] = useState(0);
   const [isPostingReply, setIsPostingReply] = useState(false);
   const [replyError, setReplyError] = useState(null);
   const [reactions, setReactions] = useState({});
@@ -59,19 +64,26 @@ export const DiscussionThreadPage = () => {
 
   const handlePostReply = async (e) => {
     e.preventDefault();
-    if (!replyText.trim()) return;
+    const hasText = Boolean(replyText.trim());
+    const hasAttachments = Boolean(replyAttachmentIds && replyAttachmentIds.length > 0);
+    if (!hasText && !hasAttachments) return;
 
     try {
       setIsPostingReply(true);
       setReplyError(null);
-      const newComment = await discussionsService.addComment(id, { content: replyText.trim() });
+      const newComment = await discussionsService.addComment(id, {
+        content: replyText.trim() || undefined,
+        attachment_ids: hasAttachments ? replyAttachmentIds : undefined,
+      });
       setDiscussion((prev) => ({
         ...prev,
         comments: [...(prev.comments || []), newComment],
       }));
       setReplyText('');
+      setReplyAttachmentIds([]);
+      setAttachmentPickerKey((k) => k + 1);
     } catch (err) {
-      setReplyError(err?.response?.data?.detail || 'Failed to post reply');
+      setReplyError(err?.response?.data?.detail?.message || err?.response?.data?.detail || 'Failed to post reply');
     } finally {
       setIsPostingReply(false);
     }
@@ -239,38 +251,18 @@ export const DiscussionThreadPage = () => {
             </div>
           </div>
 
-          {/* Downloadable Attachment Card */}
-          <div className="p-3.5 bg-canvas-main rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm border border-border-subtle">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-lg bg-severity-blocker/10 text-severity-blocker flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">picture_as_pdf</span>
-              </div>
-              <div>
-                <p className="font-label-lg text-label-lg text-text-primary font-semibold">aurora-v3-migration-plan.pdf</p>
-                <div className="flex items-center gap-2 font-body-sm text-body-sm text-text-muted mt-0.5">
-                  <span>2.4 MB</span>
-                  <span>•</span>
-                  <span>Architectural Specification</span>
-                  <span>•</span>
-                  <span className="text-status-resolved flex items-center gap-0.5">
-                    <span className="material-symbols-outlined text-[12px]">security</span> Verified Clean
-                  </span>
-                </div>
-              </div>
+          {/* Real Discussion Topic Attachments */}
+          {discussion.attachments && discussion.attachments.length > 0 && (
+            <div className="pt-2">
+              <h4 className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider mb-1">
+                Attachments &amp; Artifacts ({discussion.attachments.length})
+              </h4>
+              <DiscussionAttachmentList
+                attachments={discussion.attachments}
+                discussionId={discussion.id}
+              />
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <a
-                href={discussion?.attachment_url || `/api/v1/files/download`}
-                target="_blank"
-                rel="noopener noreferrer"
-                download="Architectural-Specification.pdf"
-                className="px-3 py-1.5 rounded-lg bg-primary-container text-on-primary hover:bg-btn-primary font-label-md text-label-md flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px]">download</span>
-                <span>Download</span>
-              </a>
-            </div>
-          </div>
+          )}
 
           {/* Reactions Bar */}
           <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
@@ -339,7 +331,7 @@ export const DiscussionThreadPage = () => {
                   shape="rounded-lg"
                   className="shrink-0"
                 />
-                <div className="flex flex-col flex-1">
+                <div className="flex flex-col flex-1 min-w-0">
                   <div className="flex items-baseline justify-between">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-label-md text-label-md text-text-primary font-bold">
@@ -354,9 +346,17 @@ export const DiscussionThreadPage = () => {
                       </span>
                     </div>
                   </div>
-                  <p className="font-body-md text-body-md text-text-secondary mt-1 whitespace-pre-wrap">
-                    {comment.content}
-                  </p>
+                  {comment.content && (
+                    <p className="font-body-md text-body-md text-text-secondary mt-1 whitespace-pre-wrap">
+                      {comment.content}
+                    </p>
+                  )}
+                  {comment.attachments && comment.attachments.length > 0 && (
+                    <DiscussionAttachmentList
+                      attachments={comment.attachments}
+                      discussionId={discussion.id}
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -371,7 +371,7 @@ export const DiscussionThreadPage = () => {
         </div>
 
         {/* Reply Composer */}
-        <form onSubmit={handlePostReply} className="mt-4 pt-4 border-t border-border-subtle flex flex-col gap-2">
+        <form onSubmit={handlePostReply} className="mt-4 pt-4 border-t border-border-subtle flex flex-col gap-3">
           <label className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
             Add Your Reply
           </label>
@@ -382,6 +382,16 @@ export const DiscussionThreadPage = () => {
             placeholder="Share insights, propose mitigations, or drop questions..."
             className="w-full p-3.5 bg-canvas-main border border-border-subtle rounded-xl font-body-md text-body-md text-text-primary placeholder:text-text-muted focus:outline-none focus:bg-surface-card resize-none"
           />
+
+          {/* Reusable Attachment Component for Replies */}
+          <DiscussionAttachmentPicker
+            key={attachmentPickerKey}
+            discussionId={discussion.id}
+            onAttachmentIdsChange={setReplyAttachmentIds}
+            onUploadingChange={setIsUploadingReplyAttachments}
+            maxFiles={5}
+          />
+
           {replyError && (
             <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center justify-between">
               <span>{replyError}</span>
@@ -396,11 +406,13 @@ export const DiscussionThreadPage = () => {
             </span>
             <button
               type="submit"
-              disabled={isPostingReply || !replyText.trim()}
-              className="px-5 py-2 bg-btn-primary hover:bg-primary-hover text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
+              disabled={isPostingReply || isUploadingReplyAttachments || (!replyText.trim() && replyAttachmentIds.length === 0)}
+              className="px-5 py-2 bg-btn-primary hover:bg-primary-hover text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-1.5 transition-all shadow-sm disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
-              <span className="material-symbols-outlined text-[18px]">send</span>
-              <span>{isPostingReply ? 'Posting...' : 'Post Reply'}</span>
+              <span className="material-symbols-outlined text-[18px]">
+                {isPostingReply ? 'progress_activity' : 'send'}
+              </span>
+              <span>{isPostingReply ? 'Posting...' : isUploadingReplyAttachments ? 'Uploading files...' : 'Post Reply'}</span>
             </button>
           </div>
         </form>
