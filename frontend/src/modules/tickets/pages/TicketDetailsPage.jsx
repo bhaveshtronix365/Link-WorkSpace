@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ticketsService, createTicketsWebSocket } from '../../../services/ticketsService';
-import { authService } from '../../../services/api';
-import { STATUS_CONFIG, SEVERITY_CONFIG, TICKET_SEVERITIES } from '../constants/ticketConstants';
+import { authService, resolveApiUrl } from '../../../services/api';
+import { STATUS_CONFIG, SEVERITY_CONFIG, TICKET_STATUSES, TICKET_SEVERITIES } from '../constants/ticketConstants';
 import { TicketCommentBox } from '../components/TicketCommentBox';
 import { TicketCommentFeed } from '../components/TicketCommentFeed';
 import { TicketAttachmentsCard } from '../components/TicketAttachmentsCard';

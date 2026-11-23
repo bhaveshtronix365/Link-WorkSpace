@@ -43,6 +43,7 @@ from backend.app.models import (
 )
 from backend.app.enums import TicketStatus
 from fastapi.responses import FileResponse
+from backend.app.utils.address_builder import build_ticket_attachment_url, build_public_url
 from backend.app.schemas import (
     UserRead,
     TicketCreate,
@@ -1515,7 +1516,7 @@ async def upload_ticket_attachment(
         stored_name=stored_filename,
         content_type=detected_mime,
         size_bytes=total_bytes,
-        file_url=f"/api/v1/tickets/{ticket.id}/attachments/{att_id}/download",
+        file_url=build_ticket_attachment_url(ticket.id, att_id),
         created_at=now,
     )
     db.add(att)

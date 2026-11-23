@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { taskService } from '../services/taskService';
 import Avatar from '../../../components/common/Avatar';
 import Modal from '../../../components/common/Modal';
+import { resolveApiUrl } from '../../../utils/apiUrl';
 
 /**
  * Format bytes into human-readable size
@@ -409,7 +410,7 @@ export const CommentComposerAndAttachmentPicker = ({
 
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <a
-                    href={att.file_url || `/api/v1/files/${att.id}/download`}
+                    href={resolveApiUrl(att.file_url || `/api/v1/files/${att.id}/download`)}
                     target="_blank"
                     rel="noopener noreferrer"
                     download={att.filename || 'attachment'}

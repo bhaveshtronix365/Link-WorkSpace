@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { discussionsService } from '../../../services/discussionsService';
-import { DEFAULT_USER } from '../../../services/api';
+import { DEFAULT_USER, resolveApiUrl } from '../../../services/api';
 import Avatar from '../../../components/common/Avatar';
 import DiscussionAttachmentPicker from '../components/DiscussionAttachmentPicker';
 import DiscussionAttachmentList from '../components/DiscussionAttachmentList';
