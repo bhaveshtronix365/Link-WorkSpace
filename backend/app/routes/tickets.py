@@ -2669,16 +2669,11 @@ async def resume_ticket(
     ticket = await _get_authorized_ticket(ticket_id, current_user, db)
     old_status = ticket.status.lower()
 
-    if old_status == "passed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "acceptance_required", "message": "Ticket is awaiting recipient acceptance. Please accept the ticket instead of resuming."}
-        )
-    elif old_status == "on_hold":
+    if old_status in ("passed", "on_hold"):
         if ticket.assignee_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail={"code": "not_assignee", "message": "Only the assigned user can resume work from on hold."}
+                detail={"code": "not_assignee", "message": f"Only the assigned user can resume work from {old_status}."}
             )
     else:
         raise HTTPException(
@@ -2796,11 +2791,16 @@ async def close_ticket(
 
     old_status = ticket.status.lower()
     is_passed_to_owner = (old_status == "passed" and ticket.assignee_id == current_user.id)
-    is_active_in_progress = (old_status in ("in_progress", "wip"))
+    is_active_in_progress = (old_status in ("in_progress", "wip") and ticket.assignee_id == current_user.id)
     is_resolved = (old_status == "resolved")
 
     if not (is_passed_to_owner or is_active_in_progress or is_resolved):
-        if old_status == "open":
+        if old_status in ("in_progress", "wip") and ticket.assignee_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "owner_not_assignee", "message": "Owner can only close in-progress tickets if assigned to owner."}
+            )
+        elif old_status == "open":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"code": "invalid_closing_state", "message": "Cannot close an open ticket. Ticket must be in progress or passed to the owner before closing."}

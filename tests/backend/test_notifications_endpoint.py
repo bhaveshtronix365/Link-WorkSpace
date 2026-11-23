@@ -95,9 +95,10 @@ async def test_notifications_endpoint_comprehensive():
             organization_id=org1_id,
         )
 
+        tkt_num = f"PRJ-{uuid.uuid4().hex[:6].upper()}"
         ticket1 = Ticket(
             id=f"tkt_{uuid.uuid4().hex[:8]}",
-            ticket_number="PRJ-101",
+            ticket_number=tkt_num,
             title="Fix notification bug",
             severity="high",
             status="open",
@@ -110,7 +111,7 @@ async def test_notifications_endpoint_comprehensive():
             organization_id=org1_id,
             type="ticket_assigned",
             title="Ticket Assigned",
-            body="You were assigned PRJ-101",
+            body=f"You were assigned {tkt_num}",
             target_type="ticket",
             target_id=ticket1.id,
             is_read=False,
@@ -176,7 +177,7 @@ async def test_notifications_endpoint_comprehensive():
 
             # Check target_label resolution
             tkt_item = next(i for i in data_list["items"] if i["id"] == notif_ticket.id)
-            assert tkt_item["target_label"] == "PRJ-101"
+            assert tkt_item["target_label"] == tkt_num
             assert tkt_item["target_label"] != ticket1.id
 
             join_item = next(i for i in data_list["items"] if i["id"] == notif_join.id)
